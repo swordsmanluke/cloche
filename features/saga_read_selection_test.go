@@ -83,37 +83,82 @@ func initSagaReadSelectionScenarios(ctx *godog.ScenarioContext) {
 		return nil
 	})
 
-	// L2 steps.
+	// L2 steps: the real read.sh against a stub saga.
+	var show string
 	ctx.Step(`^a choice question with options "([^"]*)" and "([^"]*)" answered by selecting position (\d+) with no text$`, func(a, b string, pos int) error {
-		return godog.ErrPending // pending: L2
+		show = selectionShow([]string{a, b}, []int{pos}, nil)
+		return nil
 	})
 	ctx.Step(`^a choice question with options "([^"]*)" and "([^"]*)" answered by selecting position (\d+) with text "([^"]*)"$`, func(a, b string, pos int, text string) error {
-		return godog.ErrPending // pending: L2
+		show = selectionShow([]string{a, b}, []int{pos}, &text)
+		return nil
 	})
 	ctx.Step(`^a choice question with options "([^"]*)" and "([^"]*)" answered with text "([^"]*)" and no selection$`, func(a, b, text string) error {
-		return godog.ErrPending // pending: L2
+		show = selectionShow([]string{a, b}, []int{}, &text)
+		return nil
 	})
 	ctx.Step(`^a choice question with options "([^"]*)", "([^"]*)" and "([^"]*)" answered by selecting positions (\d+) and (\d+)$`, func(a, b, c string, p1, p2 int) error {
-		return godog.ErrPending // pending: L2
+		show = selectionShow([]string{a, b, c}, []int{p1, p2}, nil)
+		return nil
 	})
 	ctx.Step(`^a choice question answered with an empty selection and no text$`, func() error {
-		return godog.ErrPending // pending: L2
+		show = selectionShow([]string{"Yes", "No"}, []int{}, nil)
+		return nil
 	})
 	ctx.Step(`^read\.sh reads that choice question$`, func() error {
-		return godog.ErrPending // pending: L2
+		// Reuses the real-shape world (and its exits/no-answer steps).
+		w := activeRealShape
+		if err := w.fixture(show); err != nil {
+			return err
+		}
+		_, err := w.phase("read.sh", map[string]string{"question_id": "Q1"})
+		return err
 	})
-	ctx.Step(`^the read output is exactly "([^"]*)"$`, func(want string) error {
-		return godog.ErrPending // pending: L2
-	})
+	ctx.Step(`^the read output is exactly "([^"]*)"$`, func(want string) error { return readAnswerIs(want + "\n") })
 	ctx.Step(`^the read output is "([^"]*)" followed by the line "([^"]*)"$`, func(first, second string) error {
-		return godog.ErrPending // pending: L2
+		return readAnswerIs(first + "\n" + second + "\n")
 	})
+	var row string
 	ctx.Step(`^I read the read-answer row of the saga module README$`, func() error {
-		return godog.ErrPending // pending: L2
+		b, err := os.ReadFile(filepath.Join("..", ".cloche", "modules", "saga", "README.md"))
+		if err != nil {
+			return err
+		}
+		for _, l := range strings.Split(string(b), "\n") {
+			if strings.HasPrefix(l, "| `read-answer`") {
+				row = l
+				return nil
+			}
+		}
+		return fmt.Errorf("no read-answer row in README")
 	})
 	ctx.Step(`^it says the output has the selected option labels and the text$`, func() error {
-		return godog.ErrPending // pending: L2
+		low := strings.ToLower(row)
+		if !strings.Contains(low, "selected") || !strings.Contains(low, "label") || !strings.Contains(low, "text") {
+			return fmt.Errorf("row does not mention selected labels and text: %s", row)
+		}
+		return nil
 	})
+}
+
+// readAnswerIs checks the exact file content real read.sh wrote.
+func readAnswerIs(want string) error {
+	w := activeRealShape
+	if w.rc != nil {
+		return fmt.Errorf("read.sh failed: %v: %s", w.rc, w.out)
+	}
+	kv, err := os.ReadFile(filepath.Join(w.dir, "kv", "answer_path"))
+	if err != nil {
+		return err
+	}
+	got, err := os.ReadFile(string(kv))
+	if err != nil {
+		return err
+	}
+	if string(got) != want {
+		return fmt.Errorf("answer = %q, want %q", got, want)
+	}
+	return nil
 }
 
 // selectionShow renders `saga show --json` in the real shape: options carry

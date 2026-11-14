@@ -245,9 +245,6 @@ func TestSagaModule_ReadChoiceAnswerShapes(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			if strings.HasPrefix(c.want, "Selected:") {
-				t.Skip("deferred to L2: read.sh does not yet render select positions")
-			}
 			got, err := readRealShape(t, c.show)
 			require.NoError(t, err)
 			assert.Equal(t, c.want, got)

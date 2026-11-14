@@ -33,8 +33,13 @@ func (w *realShapeWorld) fixture(showJSON string) error {
 	return os.WriteFile(filepath.Join(w.dir, "bin", "saga"), []byte("#!/usr/bin/env bash\ncat "+f+"\n"), 0o755)
 }
 
+// activeRealShape lets other features reuse this world's read.sh runner and
+// its "the read exits ..." steps.
+var activeRealShape *realShapeWorld
+
 func initSagaRealShapeScenarios(ctx *godog.ScenarioContext) {
 	w := &realShapeWorld{}
+	activeRealShape = w
 	ctx.Before(func(c context.Context, _ *godog.Scenario) (context.Context, error) {
 		*w = realShapeWorld{humanText: "the human ruling", agentText: "the agent guess", laterText: "the later agent ruling"}
 		return c, w.setup()
