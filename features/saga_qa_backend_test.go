@@ -2,6 +2,7 @@ package features_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -55,6 +56,8 @@ type sagaWorld struct {
 	took    time.Duration
 	open    []string
 	answer  string
+	modules []string
+	section string
 }
 
 func (w *sagaWorld) mod() string {
@@ -77,6 +80,15 @@ func (w *sagaWorld) setup() error {
 func (w *sagaWorld) installStub() error {
 	for n, body := range map[string]string{"saga": sagaScenarioStub, "cloche": sagaScenarioKV} {
 		if err := os.WriteFile(filepath.Join(w.dir, "bin", n), []byte(body), 0o755); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (w *sagaWorld) installStubBinaries(names ...string) error {
+	for _, n := range names {
+		if err := os.WriteFile(filepath.Join(w.dir, "bin", n), []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
 			return err
 		}
 	}
@@ -185,25 +197,83 @@ func initSagaQAScenarios(ctx *godog.ScenarioContext) {
 	})
 	w.register(ctx)
 	ctx.Step(`^I\ list\ the\ modules\ under\ \.cloche/modules$`, func() error {
-		return godog.ErrPending // pending: L2
+		entries, err := os.ReadDir(filepath.Join("..", ".cloche", "modules"))
+		w.modules = nil
+		for _, e := range entries {
+			w.modules = append(w.modules, e.Name())
+		}
+		return err
 	})
-	ctx.Step(`^I\ read\ the\ "([^"]*)"\ section\ of\ docs/modules\.md$`, func(a0 string) error {
-		return godog.ErrPending // pending: L2
+	ctx.Step(`^I\ read\ the\ "([^"]*)"\ section\ of\ docs/modules\.md$`, func(heading string) error {
+		data, err := os.ReadFile(filepath.Join("..", "docs", "modules.md"))
+		if err != nil {
+			return err
+		}
+		for _, sec := range strings.Split(string(data), "\n## ")[1:] {
+			if strings.HasPrefix(sec, heading) {
+				w.section = sec
+				return nil
+			}
+		}
+		return fmt.Errorf("no section %q in docs/modules.md", heading)
 	})
-	ctx.Step(`^I\ run\ "([^"]*)"\ on\ this\ repository$`, func(a0 string) error {
-		return godog.ErrPending // pending: L2
+	ctx.Step(`^I\ run\ "([^"]*)"\ on\ this\ repository$`, func(c string) error {
+		if c != "cloche validate" {
+			return fmt.Errorf("unsupported command %q", c)
+		}
+		cmd := exec.Command("go", "run", "./cmd/cloche", "validate")
+		cmd.Dir = filepath.Join("..")
+		// validate checks that each module's required binaries are on PATH; the
+		// stubs satisfy that without needing bd or saga installed.
+		if err := w.installStubBinaries("bd", "saga"); err != nil {
+			return err
+		}
+		cmd.Env = append(os.Environ(), "PATH="+filepath.Join(w.dir, "bin")+string(os.PathListSeparator)+os.Getenv("PATH"))
+		out, err := cmd.CombinedOutput()
+		w.out, w.rc = string(out), err
+		return nil
 	})
 	ctx.Step(`^it\ describes\ binding\ saga\ to\ qa\ with\ SAGA_PROJECT$`, func() error {
-		return godog.ErrPending // pending: L2
+		for _, m := range []string{"bind qa = saga", "SAGA_PROJECT"} {
+			if !strings.Contains(w.section, m) {
+				return fmt.Errorf("section lacks %q", m)
+			}
+		}
+		return nil
 	})
 	ctx.Step(`^it\ does\ not\ describe\ a\ judge\ workflow\ or\ blocking\ await$`, func() error {
-		return godog.ErrPending // pending: L2
+		for _, m := range []string{"| `judge` |", "saga-judge", "blocking await", "reframe"} {
+			if strings.Contains(w.section, m) {
+				return fmt.Errorf("section still mentions %q", m)
+			}
+		}
+		return nil
 	})
 	ctx.Step(`^no\ file\ in\ the\ repo\ mentions\ saga_batch_id,\ saga_batch_file,\ saga_outcome\ or\ reframe$`, func() error {
-		return godog.ErrPending // pending: L2
+		// Skips .git, the scenarios that name the keys, and docs/plans (dated
+		// design records that describe the migration).
+		pat := `saga_batch_id|saga_batch_file|saga_outcome|\breframe\b`
+		cmd := exec.Command("grep", "-rIlE", pat, ".", "--exclude-dir=.git", "--exclude-dir=plans",
+			"--exclude=saga_qa_backend.feature", "--exclude=saga_qa_backend_test.go")
+		cmd.Dir = filepath.Join("..")
+		out, err := cmd.Output()
+		// grep exits 1 when nothing matches, which is the passing case.
+		var ee *exec.ExitError
+		if err != nil && !(errors.As(err, &ee) && ee.ExitCode() == 1) {
+			return fmt.Errorf("grep for stale references: %w", err)
+		}
+		if len(strings.TrimSpace(string(out))) > 0 {
+			return fmt.Errorf("stale references in:\n%s", out)
+		}
+		return nil
 	})
 	ctx.Step(`^there\ is\ no\ saga\-judge\ module$`, func() error {
-		return godog.ErrPending // pending: L2
+		for _, m := range w.modules {
+			if m == "saga-judge" {
+				return fmt.Errorf("saga-judge module still exists")
+			}
+		}
+		return nil
 	})
 }
 

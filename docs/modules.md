@@ -183,21 +183,25 @@ open, answer, none-open, read, and human-beside-judge. Implement its `Backend` i
 `qaconformance.Run(t, newBackend)`. Its embedded `stubmodule/` (scripts over a `qa-stub`
 tool) is the reference implementation and the suite's own test.
 
-## Asking in Saga: `saga-judge`
+## Asking in Saga: the `saga` qa backend
 
-`.cloche/modules/saga-judge` lets a workflow ask in Saga and wait, with a judge agent
-settling questions that an existing ruling or intent entry already decides. Design:
-[`docs/plans/2026-11-10-autonomous-loop-design.md`](plans/2026-11-10-autonomous-loop-design.md), Part 2.
+`.cloche/modules/saga` is a `qa` backend over Saga. Bind it to the `qa` slot and give it
+the Saga project:
+
+```
+bind qa = saga { env.SAGA_PROJECT = "cloche" }
+```
+
+`cloche questions ask|await|read` then run the module's workflows. Design:
+[`docs/plans/2026-11-13-qa-backends-design.md`](plans/2026-11-13-qa-backends-design.md).
 
 | Workflow | `kv:` | `out:` | Notes |
 |---|---|---|---|
-| `ask` | `saga_batch_file` | `saga_batch_id` | `saga ask -p <project> -f <feature> --file <file> --json` from a batch file; needs `SAGA_PROJECT` / `SAGA_FEATURE` (or kv `saga_project` / `saga_feature`). |
-| `await-answer` | `saga_batch_id` | `saga_outcome` | Poll step over `saga poll <batch> --no-wait --json` (exit 2 = still open): `answered`, `reframe` (a question was deprecated by the judge; workflow ends `fail`) or `timeout`. |
-| `judge` | `saga_batch_id` | — | Host agent step: decide (citing a ruling or intent id), send back (`saga answer --judge --deprecates`) or hold (`saga hold --reason`); exit 3 (already ruled) is fine. Holds unless certain; never answers from its own reasoning. Always ends `success`. |
+| `ask` | `questions_file` | `question_ids` | One `saga ask -p $SAGA_PROJECT -f <feature> --file <file> --json` batch; the feature is the file's `backend.feature`. |
+| `await-answer` | `question_ids` | `questions_open` | One non-blocking `saga show <id> --json` per id; open means no answer yet. |
+| `read-answer` | `question_id` | `answer_path` | Writes the ruling in force to a file, a human's answer preferred over a judge's. Fails when unanswered. |
 
-The module's `example-ask-with-judge` wires `ask -> await-answer` and `ask -> judge` in
-parallel. It needs a Saga with the judge author kind, the held mark and refuse-if-answered.
-See the module README.
+Requires `saga` and `jq` on the host `PATH`. See the module README.
 
 ## CLI
 
