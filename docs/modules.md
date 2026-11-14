@@ -171,6 +171,14 @@ run them as host workflows with the bind's env settings.
 | `await-answer` | `question_ids` | `questions_open` | **Non-blocking.** `question_ids` is one id per line; `questions_open` lists those with no answer (empty when all are answered). |
 | `read-answer` | `question_id` | `answer_path` | Path to a file holding the answer text. **Ends `fail` when there is no answer.** When a human and a judge both answered, it returns the human's. |
 
+A slot whose workflow ends in a failed state is reported as an error, not as "no answer yet":
+the 404 body carries `failed_step`, `output_tail` (last 8 KiB of that step's output) and `log_path`,
+and `cloche questions` prints the failing step, the last 20 lines of its output and the log path.
+When `CLOCHE_TASK_ID` and `CLOCHE_ATTEMPT_ID` are set (sent as `X-Cloche-Task-Id` /
+`X-Cloche-Attempt-Id`), the daemon also writes the step output to
+`.cloche/logs/<task>/<attempt>/<step>.log` and appends it to that attempt's `full.log`, so
+`cloche logs` and `cloche poll` show it. Without a calling run you get the error and tail but no log file.
+
 The module may also ship `asking.md` (how to ask well) and `judge.md` (how a judge should
 answer) at its root; `cloche questions guide [--judge]` serves them. `cloche validate` warns when
 a module bound to `qa` has no `judge.md`, since the judge has nothing to follow for it. With no module bound
