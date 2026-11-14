@@ -2134,7 +2134,7 @@ Controls the help channel (`clo ask` / `ask_user` MCP tool / `cloche threads`).
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `park_after` | `"5m"` | Duration string. How long an `AskHelp` call blocks in place before parking the run: the container is committed and stopped, and the run's state becomes `parked` until a reply resumes it. Overridable per ask with `--no-park` (`clo ask`) / `no_park` (`ask_user`), which disables parking and blocks in place instead. |
+| `park_after` | `"5m"` | Duration string. How long an `AskHelp` call blocks in place before parking the run: the container is committed and stopped, and the run's state becomes `parked` until a reply resumes it. Overridable per ask with `--no-park` (`clo ask`) / `no_park` (`ask_user`), which disables parking and blocks in place instead. A blocked `ask_user` call on `/mcp` is answered as an SSE stream (when the client sends `Accept: text/event-stream`) with a keepalive every 15s, so the agent's MCP client does not time out (~60s) before `park_after` fires. |
 | `retention` | `"720h"` | Duration string. How long archived threads (from completed tasks) are kept before the daemon's daily sweep deletes them. |
 
 Questions always flow via `cloche threads`, which needs no configuration. To

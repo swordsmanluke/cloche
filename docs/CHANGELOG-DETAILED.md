@@ -7,9 +7,14 @@
 - `1dcc7f8` Group binds (`bind qa = module`, `bind tasks = module`) and bind `env.` settings: parsing, resolution and `cloche validate` checks (missing export, non-module target, reserved `qa`/`tasks` names, credential warning).
 - `90b4377` Bind env reaches slot runs in the gRPC executor and host phases, merged under a step's `with` and counted toward contract `env:` requirements.
 
+### Fixes
+
+- `fc029023` `/mcp` `tools/call` replies as SSE (keepalive comment or `notifications/progress` every 15s; final result as one `message` event) when the client accepts `text/event-stream`, so `ask_user` survives the client's ~60s silent-request limit and parks via `park_after`. Added `WithMCPKeepalive` for tests.
+
 ### Internal
 
 - `50db20b` Added the BDD test plan and `features/group_binds` scenarios for group binds and bind settings.
+- `fc029023` Added `features/ask_user_park.feature` (steps pending) for the ask_user park-before-timeout fix.
 
 ## v3.27.0 — 2026-11-09
 

@@ -7,6 +7,10 @@
 - Group binds: `bind qa = <module>` and `bind tasks = <module>` route every slot in a built-in group (`qa`: ask, await-answer, read-answer; `tasks`: the six tracker phases) to the module's same-named export; a per-slot bind in the same scope still wins. `qa` and `tasks` are now reserved workflow/export names.
 - Bind settings: `bind qa = saga { env.SAGA_PROJECT = "cloche" }` passes literal env to the slot's run (daemon env < bind settings < a step's `with`) and satisfies a contract `env:` requirement. `cloche validate` errors on a group bind whose module lacks an export, a non-module target, or a workflow named `qa`/`tasks`, and warns when a bind sets a variable the module lists as a credential. ([design](docs/plans/2026-11-13-qa-backends-design.md))
 
+### Notable fixes
+
+- `ask_user` no longer returns a timeout to Claude agents after ~60s, before `park_after` can park the run: blocking `tools/call` requests on `/mcp` now reply as an SSE stream with 15s keepalives when the client accepts `text/event-stream`.
+
 ## v3.27.0 — 2026-11-09
 
 ### Features
