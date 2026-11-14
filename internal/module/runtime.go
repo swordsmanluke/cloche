@@ -168,6 +168,22 @@ func CheckOutputs(slot string, c *domain.Contract, hasKV func(string) bool) erro
 	return nil
 }
 
+// MergeEnv overlays env layers, later layers winning. Slot runs use it as
+// MergeEnv(bind settings, step `with` env): the daemon's own environment sits
+// beneath both, and an enclosing call's env beneath those (WithEnv).
+func MergeEnv(layers ...map[string]string) map[string]string {
+	var out map[string]string
+	for _, l := range layers {
+		for k, v := range l {
+			if out == nil {
+				out = map[string]string{}
+			}
+			out[k] = v
+		}
+	}
+	return out
+}
+
 type envKey struct{}
 
 // WithEnv returns ctx carrying extra environment variables for the steps of

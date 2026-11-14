@@ -2029,3 +2029,60 @@ func TestCreateResumeAttempt_InheritsRepos(t *testing.T) {
 func (s *recordingRunStore) GetAttempt(_ context.Context, id string) (*domain.Attempt, error) {
 	return nil, fmt.Errorf("attempt %q not found", id)
 }
+
+// bindEnvCall runs the fixture's "check" slot through a step carrying stepBind
+// (inner scope) over a root bind with rootEnv (outer scope), and returns what
+// the module's script wrote.
+func bindEnvCall(t *testing.T, contract *domain.Contract, rootEnv, stepEnv map[string]string, with []domain.WithEntry) (string, domain.StepResult) {
+	t.Helper()
+	de, _, _, outFile := moduleCallFixture(t, contract, `echo "$X" > $OUT`)
+	de.modules.Root[0].Env = rootEnv
+	step := &domain.Step{
+		Name: "review", Type: domain.StepTypeWorkflow,
+		Config: map[string]string{"workflow_name": "check"},
+		With:   with,
+	}
+	if stepEnv != nil {
+		step.Binds = []domain.Bind{{Slot: "check", Target: "mod", Env: stepEnv}}
+	}
+	res, err := de.Execute(engine.WithWorkflow(context.Background(), buildHostWFForTest("main")), step)
+	require.NoError(t, err)
+	got, err := os.ReadFile(outFile)
+	require.NoError(t, err)
+	return strings.TrimSpace(string(got)), res
+}
+
+func TestDaemonExecutor_BindEnvReachesSlotRun(t *testing.T) {
+	got, res := bindEnvCall(t, nil, map[string]string{"X": "outer"}, nil, nil)
+	assert.Equal(t, "success", res.Result)
+	assert.Equal(t, "outer", got)
+}
+
+func TestDaemonExecutor_BindEnvPrecedence(t *testing.T) {
+	t.Setenv("X", "daemon")
+	// Bind beats the daemon environment.
+	got, _ := bindEnvCall(t, nil, map[string]string{"X": "outer"}, nil, nil)
+	assert.Equal(t, "outer", got)
+	// Inner-scope bind beats the outer one.
+	got, _ = bindEnvCall(t, nil, map[string]string{"X": "outer"}, map[string]string{"X": "inner"}, nil)
+	assert.Equal(t, "inner", got)
+	// The step's with block beats every bind.
+	got, _ = bindEnvCall(t, nil, map[string]string{"X": "outer"}, map[string]string{"X": "inner"},
+		[]domain.WithEntry{{Key: "X", Env: true, Source: domain.WithLiteral, Value: "step"}})
+	assert.Equal(t, "step", got)
+}
+
+func TestDaemonExecutor_BindEnvSatisfiesContractEnv(t *testing.T) {
+	contract := &domain.Contract{Env: []string{"NEEDED_BY_BIND_TEST"}}
+	de, _, _, _ := moduleCallFixture(t, contract, `true`)
+	step := &domain.Step{Name: "review", Type: domain.StepTypeWorkflow, Config: map[string]string{"workflow_name": "check"}}
+	ctx := engine.WithWorkflow(context.Background(), buildHostWFForTest("main"))
+	res, err := de.Execute(ctx, step)
+	require.NoError(t, err)
+	assert.Equal(t, "fail", res.Result, "unset env requirement must fail the call")
+
+	de.modules.Root[0].Env = map[string]string{"NEEDED_BY_BIND_TEST": "1"}
+	res, err = de.Execute(ctx, step)
+	require.NoError(t, err)
+	assert.Equal(t, "success", res.Result)
+}

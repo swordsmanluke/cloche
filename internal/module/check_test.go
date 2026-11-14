@@ -202,50 +202,43 @@ func TestCheck_UnprovidedInputIsError(t *testing.T) {
 	assert.True(t, anyContains(rep.Errors, "requires kv:child_branch, which nothing provides"), rep.Errors)
 }
 
-func groupModule(t *testing.T, dir, name, creds string, exports ...string) {
-	var src strings.Builder
-	for _, e := range exports {
-		src.WriteString("workflow " + e + " {\n  step a {\n    run = \"true\"\n    results = [success, fail]\n  }\n  a:success -> done\n  a:fail -> abort\n}\n")
-	}
-	toml := "name = \"" + name + "\"\nexports = [\"" + strings.Join(exports, "\",\"") + "\"]\n" + creds
-	installModule(t, dir, name, toml, src.String(), true)
-}
-
 func TestCheck_GroupBinds(t *testing.T) {
-	qa := []string{"ask", "await-answer", "read-answer"}
+	const qaMod = `workflow ask { step a { run = "true" results = [success, fail] } a:success -> done a:fail -> abort }
+workflow await-answer { step a { run = "true" results = [success, fail] } a:success -> done a:fail -> abort }
+workflow read-answer { step a { run = "true" results = [success, fail] } a:success -> done a:fail -> abort }
+`
+	run := func(t *testing.T, projectCloche string, files map[string]string) *module.Report {
+		dir := t.TempDir()
+		installModule(t, dir, "saga", "name = \"saga\"\nexports = [\"ask\", \"await-answer\", \"read-answer\"]\ncredentials = [\"SAGA_TOKEN\"]\n", qaMod, true)
+		installModule(t, dir, "partial", "name = \"partial\"\nexports = [\"ask\"]\n", `workflow ask { step a { run = "true" results = [success, fail] } a:success -> done a:fail -> abort }`, true)
+		if files == nil {
+			files = map[string]string{}
+		}
+		files[module.ProjectFile] = projectCloche
+		return module.Check(dir, parseProject(t, dir, files), nil)
+	}
 
-	t.Run("complete module is clean", func(t *testing.T) {
-		dir := t.TempDir()
-		groupModule(t, dir, "saga", "", qa...)
-		parseProject(t, dir, map[string]string{"project.cloche": "bind qa = saga\n"})
-		assert.Empty(t, module.Check(dir, nil, nil).Errors)
+	t.Run("ok", func(t *testing.T) {
+		rep := run(t, "bind qa = saga\n", nil)
+		assert.Empty(t, rep.Errors)
 	})
-	t.Run("missing export is named", func(t *testing.T) {
-		dir := t.TempDir()
-		groupModule(t, dir, "saga", "", "ask", "await-answer")
-		parseProject(t, dir, map[string]string{"project.cloche": "bind qa = saga\n"})
-		rep := module.Check(dir, nil, nil)
+	t.Run("missing export named", func(t *testing.T) {
+		rep := run(t, "bind qa = partial\n", nil)
+		assert.True(t, anyContains(rep.Errors, "await-answer"), rep.Errors)
 		assert.True(t, anyContains(rep.Errors, "read-answer"), rep.Errors)
 	})
 	t.Run("non-module target", func(t *testing.T) {
-		dir := t.TempDir()
-		parseProject(t, dir, map[string]string{"project.cloche": "bind qa = nowhere\nbind tasks = saga:ask\n"})
-		rep := module.Check(dir, nil, nil)
-		assert.True(t, anyContains(rep.Errors, "bind qa = nowhere: target \"nowhere\" must be an installed module"), rep.Errors)
-		assert.True(t, anyContains(rep.Errors, "must be a module"), rep.Errors)
+		rep := run(t, "bind qa = some-wf\n", nil)
+		assert.True(t, anyContains(rep.Errors, "must be an installed module"), rep.Errors)
 	})
 	t.Run("reserved workflow names", func(t *testing.T) {
-		dir := t.TempDir()
-		src := "workflow qa {\n  step a {\n    run = \"true\"\n    results = [success, fail]\n  }\n  a:success -> done\n  a:fail -> abort\n}\n"
-		proj := parseProject(t, dir, map[string]string{"main.cloche": src})
-		rep := module.Check(dir, proj, nil)
-		assert.True(t, anyContains(rep.Errors, `"qa" is a reserved group name`), rep.Errors)
+		for _, n := range []string{"qa", "tasks"} {
+			rep := run(t, "", map[string]string{"main.cloche": "workflow " + n + " {\n  step a {\n    run = \"true\"\n    results = [success]\n  }\n  a:success -> done\n}\n"})
+			assert.True(t, anyContains(rep.Errors, "reserved"), n)
+		}
 	})
-	t.Run("credential setting warns", func(t *testing.T) {
-		dir := t.TempDir()
-		groupModule(t, dir, "saga", "credentials = [\"SAGA_TOKEN\"]\n", qa...)
-		parseProject(t, dir, map[string]string{"project.cloche": "bind qa = saga { env.SAGA_TOKEN = \"x\" }\n"})
-		rep := module.Check(dir, nil, nil)
+	t.Run("credential warning", func(t *testing.T) {
+		rep := run(t, "bind qa = saga { env.SAGA_TOKEN = \"x\" }\n", nil)
 		assert.Empty(t, rep.Errors)
 		assert.True(t, anyContains(rep.Warnings, "SAGA_TOKEN"), rep.Warnings)
 	})

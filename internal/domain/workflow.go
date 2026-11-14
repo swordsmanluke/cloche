@@ -70,27 +70,29 @@ type Step struct {
 // Bind maps a slot (the workflow name used at a call site) to a concrete
 // workflow. Target is the raw right-hand side: "name" or "module:workflow".
 // Force marks a `bind!`, which wins over every bind beneath it.
+//
+// A group bind (`bind qa = saga`) has Group set and Slot naming the group; it
+// stands for one per-slot bind to the module's same-named export for every
+// slot in BindGroups[Slot]. Env holds the literal settings from the bind's
+// `{ env.X = "..." }` block.
 type Bind struct {
 	Slot   string
 	Target string
 	Force  bool
-	// Group is set when Slot names a built-in slot group (`bind qa = saga`):
-	// the bind then covers every slot in the group, resolved against the
-	// target module's same-named export. Slot holds the group name.
-	Group string
-	// Env holds literal settings from a `{ env.X = "lit" }` block.
-	Env map[string]string
+	Group  bool
+	Env    map[string]string
 }
 
-// BindGroups maps each reserved group name to the slots it binds.
+// BindGroups lists the slots each built-in bind group expands to. The group
+// names are reserved: no workflow may be called qa or tasks.
 var BindGroups = map[string][]string{
 	"qa":    {"ask", "await-answer", "read-answer"},
 	"tasks": {"list-tasks", "claim-task", "close-task", "release-task", "create-task", "update-task"},
 }
 
-// InGroup reports whether slot belongs to the group the bind names.
-func (b Bind) InGroup(slot string) bool {
-	for _, s := range BindGroups[b.Group] {
+// InBindGroup reports whether slot is a member of the named bind group.
+func InBindGroup(group, slot string) bool {
+	for _, s := range BindGroups[group] {
 		if s == slot {
 			return true
 		}

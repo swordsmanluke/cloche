@@ -92,6 +92,36 @@ file covers that file's workflows, inside `workflow { }` covers that workflow, i
 `step { }` covers that call. Binds are dynamic: the innermost bind wins across nested
 calls, except `bind!`. An unbound slot falls back to a project workflow, then a built-in.
 
+### Group binds
+
+A group bind routes every slot in a built-in group to one module's same-named export:
+
+```
+bind qa = saga       # ask, await-answer, read-answer
+bind tasks = beads-tasks   # list-tasks, claim-task, close-task, release-task, create-task, update-task
+```
+
+`qa` and `tasks` are reserved group names: a project workflow or module export may not
+use them as a slot name. A per-slot bind in the same scope beats a group bind.
+
+### Bind settings
+
+A bind may carry literal environment settings that reach the slot's run:
+
+```
+bind qa = saga { env.SAGA_PROJECT = "cloche" }
+```
+
+For a group bind the settings apply to every slot in the group. The settings come from
+the bind that wins resolution, so an inner-scope bind's settings replace an outer one's.
+A bind setting satisfies a contract `env:` requirement. Env precedence, lowest to highest:
+the daemon's environment, an enclosing call's env, the winning bind's settings, then the
+step's own `with` block.
+
+> **Credentials:** bind settings are literal text in a checked-in `.cloche` file. Do not
+> put secrets there; `cloche validate` warns when a bind sets a variable the module lists
+> as a credential. Keep credentials in the daemon's environment.
+
 ## Task trackers (standard contract)
 
 The daemon's orchestration loop resolves these phases through `project.cloche`:

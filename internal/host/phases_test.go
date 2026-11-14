@@ -292,3 +292,62 @@ func TestRunTrackerPhase_NoPhaseResolves(t *testing.T) {
 	_, err := RunTrackerPhase(context.Background(), &Runner{Store: newSQLiteStore(t)}, t.TempDir(), SlotUpdateTask, nil)
 	require.Error(t, err)
 }
+
+const trackerEnvWF = `workflow create-task {
+  host {}
+  contract {
+    env: BIND_PROJECT
+  }
+  step c {
+    run = "true"
+    results = [success, fail]
+  }
+  c:success -> done
+  c:fail -> abort
+}
+`
+
+func TestResolvePhase_BindEnvReachesRunAndSatisfiesContract(t *testing.T) {
+	dir := t.TempDir()
+	mod := filepath.Join(dir, ".cloche", "modules", "tracker")
+	writeFile(t, filepath.Join(mod, "module.toml"), "name = \"tracker\"\ndescription = \"t\"\nexports = [\"create-task\"]\n")
+	writeFile(t, filepath.Join(mod, "tasks.cloche"), trackerEnvWF)
+	writeFile(t, filepath.Join(dir, ".cloche", "project.cloche"), "bind tasks = tracker { env.BIND_PROJECT = \"cloche\" }\n")
+
+	res, err := resolvePhase(dir, SlotCreateTask)
+	require.NoError(t, err)
+	assert.Equal(t, map[string]string{"BIND_PROJECT": "cloche"}, res.Env)
+
+	// The contract's env requirement is met by the bind alone.
+	os.Unsetenv("BIND_PROJECT")
+	assert.True(t, phaseHasEnv(res.Env)("BIND_PROJECT"))
+	assert.False(t, phaseHasEnv(nil)("BIND_PROJECT"))
+}
+
+func TestRunClaimTask_BindEnvVisibleToRun(t *testing.T) {
+	dir := t.TempDir()
+	out := filepath.Join(t.TempDir(), "env.txt")
+	mod := filepath.Join(dir, ".cloche", "modules", "tracker")
+	writeFile(t, filepath.Join(mod, "module.toml"), "name = \"tracker\"\ndescription = \"t\"\nexports = [\"claim-task\"]\n")
+	writeFile(t, filepath.Join(mod, "tasks.cloche"), fmt.Sprintf(`workflow claim-task {
+  host {}
+  contract {
+    env: BIND_PROJECT
+  }
+  step claim {
+    run = "echo $BIND_PROJECT > %s"
+    results = [success, fail]
+  }
+  claim:success -> done
+  claim:fail -> abort
+}
+`, out))
+	writeFile(t, filepath.Join(dir, ".cloche", "project.cloche"), "bind tasks = tracker { env.BIND_PROJECT = \"cloche\" }\n")
+	os.Unsetenv("BIND_PROJECT")
+
+	_, err := RunClaimTask(context.Background(), &Runner{Store: newSQLiteStore(t)}, dir, "t1", "a1")
+	require.NoError(t, err)
+	got, err := os.ReadFile(out)
+	require.NoError(t, err)
+	assert.Equal(t, "cloche\n", string(got))
+}

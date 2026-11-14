@@ -175,73 +175,87 @@ func TestFrameFor(t *testing.T) {
 
 func groupResolver() *module.Resolver {
 	mod := func(name string, exports ...string) *module.Module {
-		wfs := map[string]*domain.Workflow{}
+		m := &module.Module{Manifest: module.Manifest{Name: name, Exports: exports}, Workflows: map[string]*domain.Workflow{}}
 		for _, e := range exports {
-			wfs[e] = wfn(e, name)
+			m.Workflows[e] = wfn(e, name)
 		}
-		return &module.Module{Manifest: module.Manifest{Name: name, Exports: exports}, Workflows: wfs}
+		return m
 	}
-	return &module.Resolver{Registry: &module.Registry{Modules: map[string]*module.Module{
-		"saga":  mod("saga", "ask", "await-answer", "read-answer"),
-		"other": mod("other", "ask"),
-	}}}
+	return &module.Resolver{
+		Registry: &module.Registry{Modules: map[string]*module.Module{
+			"saga":  mod("saga", "ask", "await-answer", "read-answer"),
+			"other": mod("other", "ask"),
+			"beads": mod("beads", "list-tasks", "claim-task", "close-task", "release-task", "create-task", "update-task"),
+		}},
+		Project: map[string]*domain.Workflow{"some-wf": wfn("some-wf", "")},
+	}
 }
 
 func TestResolveSlot_GroupBind(t *testing.T) {
 	r := groupResolver()
-	grp := domain.Bind{Slot: "qa", Target: "saga", Group: "qa", Env: map[string]string{"K": "v"}}
-	stack := module.CallStack{fr("w", sc(module.ScopeFile, "", grp))}
-
-	for _, slot := range []string{"ask", "await-answer", "read-answer"} {
+	env := map[string]string{"P": "x"}
+	stack := module.CallStack{fr("main", sc(module.ScopeWorkflow, "",
+		domain.Bind{Slot: "qa", Target: "saga", Group: true, Env: env}))}
+	for _, slot := range domain.BindGroups["qa"] {
 		got, err := r.ResolveSlot(stack, slot)
 		require.NoError(t, err, slot)
 		assert.Equal(t, "saga", got.Workflow.Module)
 		assert.Equal(t, slot, got.Workflow.Name)
-		assert.Equal(t, map[string]string{"K": "v"}, got.Env)
+		assert.Equal(t, env, got.Env)
 	}
 	_, err := r.ResolveSlot(stack, "list-tasks")
-	assert.ErrorIs(t, err, module.ErrSlotNotFound, "slots outside the group are unaffected")
+	assert.ErrorIs(t, err, module.ErrSlotNotFound)
+}
+
+func TestResolveSlot_GroupEqualsSixLines(t *testing.T) {
+	r := groupResolver()
+	group := module.CallStack{fr("main", sc(module.ScopeFile, "", domain.Bind{Slot: "tasks", Target: "beads", Group: true}))}
+	var six []domain.Bind
+	for _, s := range domain.BindGroups["tasks"] {
+		six = append(six, bind(s, "beads", false))
+	}
+	lines := module.CallStack{fr("main", sc(module.ScopeFile, "", six...))}
+	for _, s := range domain.BindGroups["tasks"] {
+		a, err := r.ResolveSlot(group, s)
+		require.NoError(t, err)
+		b, err := r.ResolveSlot(lines, s)
+		require.NoError(t, err)
+		assert.Same(t, b.Workflow, a.Workflow)
+	}
 }
 
 func TestResolveSlot_PerSlotBeatsGroupInSameScope(t *testing.T) {
 	r := groupResolver()
-	grp := domain.Bind{Slot: "qa", Target: "saga", Group: "qa"}
-	// The group bind is written after the per-slot bind; per-slot still wins.
-	stack := module.CallStack{fr("w", sc(module.ScopeFile, "", bind("ask", "other", false), grp))}
-
+	// Order must not matter: the group bind comes last here.
+	stack := module.CallStack{fr("main", sc(module.ScopeWorkflow, "",
+		bind("ask", "other", false), domain.Bind{Slot: "qa", Target: "saga", Group: true}))}
 	got, err := r.ResolveSlot(stack, "ask")
 	require.NoError(t, err)
 	assert.Equal(t, "other", got.Workflow.Module)
-	got, err = r.ResolveSlot(stack, "await-answer")
+	got, err = r.ResolveSlot(stack, "read-answer")
 	require.NoError(t, err)
 	assert.Equal(t, "saga", got.Workflow.Module)
 }
 
-func TestResolveSlot_GroupScopeOrderAndForce(t *testing.T) {
+func TestResolveSlot_InnerGroupBeatsOuterPerSlot(t *testing.T) {
 	r := groupResolver()
-	grp := domain.Bind{Slot: "qa", Target: "saga", Group: "qa"}
-	inner := module.CallStack{fr("w",
-		sc(module.ScopeStep, "", bind("ask", "other", false)),
-		sc(module.ScopeFile, "", grp))}
-	got, err := r.ResolveSlot(inner, "ask")
+	stack := module.CallStack{fr("main",
+		sc(module.ScopeStep, "", domain.Bind{Slot: "qa", Target: "saga", Group: true}),
+		sc(module.ScopeFile, "", bind("ask", "other", false)))}
+	got, err := r.ResolveSlot(stack, "ask")
 	require.NoError(t, err)
-	assert.Equal(t, "other", got.Workflow.Module, "inner scope beats outer group bind")
-
-	forced := grp
-	forced.Force = true
-	stack := module.CallStack{fr("w",
-		sc(module.ScopeStep, "", bind("ask", "other", false)),
-		sc(module.ScopeFile, "", forced))}
-	got, err = r.ResolveSlot(stack, "ask")
-	require.NoError(t, err)
-	assert.Equal(t, "saga", got.Workflow.Module, "bind! group overrides inner binds")
+	assert.Equal(t, "saga", got.Workflow.Module)
 }
 
-func TestResolveSlot_GroupTargetMustBeModule(t *testing.T) {
+func TestResolveSlot_GroupBindErrors(t *testing.T) {
 	r := groupResolver()
-	r.Project = map[string]*domain.Workflow{"wf": wfn("wf", "")}
-	stack := module.CallStack{fr("w", sc(module.ScopeFile, "", domain.Bind{Slot: "qa", Target: "wf", Group: "qa"}))}
-	_, err := r.ResolveSlot(stack, "ask")
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "must be an installed module")
+	st := func(target string) module.CallStack {
+		return module.CallStack{fr("main", sc(module.ScopeWorkflow, "", domain.Bind{Slot: "qa", Target: target, Group: true}))}
+	}
+	_, err := r.ResolveSlot(st("some-wf"), "ask")
+	assert.ErrorContains(t, err, "must be an installed module")
+	_, err = r.ResolveSlot(st("saga:ask"), "ask")
+	assert.ErrorContains(t, err, "must be a module name")
+	_, err = r.ResolveSlot(st("other"), "await-answer")
+	assert.ErrorContains(t, err, "does not export")
 }

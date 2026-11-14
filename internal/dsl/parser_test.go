@@ -2,7 +2,6 @@ package dsl_test
 
 import (
 	"fmt"
-	"reflect"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -1258,7 +1257,7 @@ workflow security-path {
 	if wf.SourceFile != "/p/.cloche/security.cloche" {
 		t.Errorf("SourceFile = %q", wf.SourceFile)
 	}
-	if len(wf.Binds) != 1 || !reflect.DeepEqual(wf.Binds[0], domain.Bind{Slot: "code-review", Target: "sec-review"}) {
+	if len(wf.Binds) != 1 || fmt.Sprint(wf.Binds[0]) != fmt.Sprint(domain.Bind{Slot: "code-review", Target: "sec-review"}) {
 		t.Errorf("workflow binds = %+v", wf.Binds)
 	}
 	q := wf.Steps["quick"]
@@ -1312,43 +1311,29 @@ func TestParseWorkflow_NoReposFieldNoWarning(t *testing.T) {
 	assert.Empty(t, wf.DeprecationWarnings())
 }
 
-func TestParseFile_GroupBindAndSettings(t *testing.T) {
-	src := `bind qa = saga { env.SAGA_PROJECT = "cloche"  env.X = "y" }
-bind tasks = beads-tasks
-bind ask = other:ask
-workflow w {
-  step a {
-    run = "true"
-    results = [success, fail]
-  }
-  a:success -> done
-  a:fail -> abort
-}
-`
-	f, err := dsl.ParseFile(src)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(f.Binds) != 3 {
-		t.Fatalf("got %d binds", len(f.Binds))
-	}
-	qa := f.Binds[0]
-	if qa.Group != "qa" || qa.Target != "saga" || qa.Env["SAGA_PROJECT"] != "cloche" || qa.Env["X"] != "y" {
-		t.Errorf("qa bind = %+v", qa)
-	}
-	if f.Binds[1].Group != "tasks" || f.Binds[1].Env != nil {
-		t.Errorf("tasks bind = %+v", f.Binds[1])
-	}
-	if f.Binds[2].Group != "" {
-		t.Errorf("per-slot bind marked as group: %+v", f.Binds[2])
-	}
+func TestParseBind_GroupAndSettings(t *testing.T) {
+	f, err := dsl.ParseFile(`
+bind qa = saga
+bind tasks = beads-tasks { env.PROJECT = "cloche"  env.X = "y" }
+bind ask = other
+workflow w { host {} step a { run = "true" results = [success] } a:success -> done }`)
+	require.NoError(t, err)
+	require.Len(t, f.Binds, 3)
+	assert.Equal(t, domain.Bind{Slot: "qa", Target: "saga", Group: true}, f.Binds[0])
+	assert.True(t, f.Binds[1].Group)
+	assert.Equal(t, map[string]string{"PROJECT": "cloche", "X": "y"}, f.Binds[1].Env)
+	assert.False(t, f.Binds[2].Group)
 }
 
-func TestParseFile_BindSettingsRejectNonLiterals(t *testing.T) {
-	for _, settings := range []string{`{ env.X from y }`, `{ X = "lit" }`} {
-		src := "bind qa = saga " + settings + "\nworkflow w {\n  step a {\n    run = \"true\"\n    results = [success]\n  }\n  a:success -> done\n}\n"
-		if _, err := dsl.ParseFile(src); err == nil {
-			t.Errorf("settings %s: expected error", settings)
-		}
+func TestParseBindSettings_Errors(t *testing.T) {
+	const wf = "\nworkflow w { host {} step a { run = \"true\" results = [success] } a:success -> done }"
+	for _, src := range []string{
+		`bind qa = saga { env.X = from.y }`,
+		`bind qa = saga { other.X = "1" }`,
+		`bind qa = saga { env.X "1" }`,
+		`bind qa = saga { env.X = "1"`,
+	} {
+		_, err := dsl.ParseFile(src + wf)
+		assert.Error(t, err, src)
 	}
 }

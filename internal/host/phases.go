@@ -23,6 +23,18 @@ const (
 	SlotUpdateTask  = "update-task"
 )
 
+// phaseHasEnv reports whether an env var is visible to a phase run: set by
+// the resolved bind or in the daemon's environment.
+func phaseHasEnv(bindEnv map[string]string) func(string) bool {
+	return func(n string) bool {
+		if _, ok := bindEnv[n]; ok {
+			return true
+		}
+		_, ok := os.LookupEnv(n)
+		return ok
+	}
+}
+
 // ClaimStatusUnavailable is the claim_status value a claim-task workflow
 // writes, alongside ending in fail, when another worker won the task.
 const ClaimStatusUnavailable = "unavailable"
@@ -34,6 +46,16 @@ var errNotHostWorkflow = errors.New("slot resolves to a non-host workflow")
 // module.ErrSlotNotFound when nothing provides the slot, and
 // errNotHostWorkflow when the match is not a host workflow.
 func ResolvePhase(projectDir, slot string) (*domain.Workflow, error) {
+	res, err := resolvePhase(projectDir, slot)
+	if err != nil {
+		return nil, err
+	}
+	return res.Workflow, nil
+}
+
+// resolvePhase is ResolvePhase keeping the winning bind's env settings, which
+// the phase's run must see.
+func resolvePhase(projectDir, slot string) (*module.Resolved, error) {
 	reg, err := module.Load(projectDir)
 	if err != nil {
 		log.Printf("host: loading modules for %s: %v; phases resolve to project workflows only", projectDir, err)
@@ -48,7 +70,7 @@ func ResolvePhase(projectDir, slot string) (*domain.Workflow, error) {
 	if res.Workflow.Location != domain.LocationHost {
 		return nil, fmt.Errorf("%w: %q (%s)", errNotHostWorkflow, slot, res.Source)
 	}
-	return res.Workflow, nil
+	return res, nil
 }
 
 // PhaseResolves reports whether slot resolves to a host workflow.
@@ -76,17 +98,17 @@ var claimOutputKeys = []string{"task_title", "task_body_path", "claim_status"}
 // the task itself (migration fallback). A claim lost to another worker is
 // reported as ClaimResult.Unavailable, not as an error.
 func RunClaimTask(ctx context.Context, runner *Runner, projectDir, taskID, attemptID string) (*ClaimResult, error) {
-	wf, err := ResolvePhase(projectDir, SlotClaimTask)
+	res, err := resolvePhase(projectDir, SlotClaimTask)
 	if err != nil {
 		if errors.Is(err, module.ErrSlotNotFound) {
 			return nil, nil
 		}
 		return nil, fmt.Errorf("resolving claim-task: %w", err)
 	}
-	return runClaimWorkflow(ctx, runner, projectDir, wf, taskID, attemptID)
+	return runClaimWorkflow(ctx, runner, projectDir, res.Workflow, res.Env, taskID, attemptID)
 }
 
-func runClaimWorkflow(ctx context.Context, runner *Runner, projectDir string, wf *domain.Workflow, taskID, attemptID string) (*ClaimResult, error) {
+func runClaimWorkflow(ctx context.Context, runner *Runner, projectDir string, wf *domain.Workflow, bindEnv map[string]string, taskID, attemptID string) (*ClaimResult, error) {
 	store := runner.Store
 	if store == nil {
 		return nil, errors.New("claim-task: no run store")
@@ -98,11 +120,12 @@ func runClaimWorkflow(ctx context.Context, runner *Runner, projectDir string, wf
 		_, ok, _ := store.GetContextKey(ctx, taskID, attemptID, "", k)
 		return ok
 	}
-	hasEnv := func(n string) bool { _, ok := os.LookupEnv(n); return ok }
+	hasEnv := phaseHasEnv(bindEnv)
 	if err := module.CheckInputs(SlotClaimTask, wf.Contract, hasKV, hasEnv); err != nil {
 		return nil, err
 	}
 
+	ctx = module.WithEnv(ctx, bindEnv)
 	r := *runner
 	r.TaskID, r.AttemptID, r.KeepContext = taskID, attemptID, true
 	result, err := r.RunWorkflowDef(ctx, projectDir, wf, domain.GenerateRunID(SlotClaimTask, attemptID))
@@ -148,10 +171,11 @@ func RunTrackerPhase(ctx context.Context, runner *Runner, projectDir, slot strin
 	if store == nil {
 		return nil, fmt.Errorf("%s: no run store", slot)
 	}
-	wf, err := ResolvePhase(projectDir, slot)
+	res, err := resolvePhase(projectDir, slot)
 	if err != nil {
 		return nil, fmt.Errorf("resolving %s: %w", slot, err)
 	}
+	wf := res.Workflow
 
 	kvTask, kvAttempt := slot, domain.GenerateAttemptID()
 	defer func() { _ = store.DeleteContextKeys(context.Background(), kvTask, kvAttempt) }()
@@ -167,11 +191,12 @@ func RunTrackerPhase(ctx context.Context, runner *Runner, projectDir, slot strin
 		_, ok, _ := store.GetContextKey(ctx, kvTask, kvAttempt, "", k)
 		return ok
 	}
-	hasEnv := func(n string) bool { _, ok := os.LookupEnv(n); return ok }
+	hasEnv := phaseHasEnv(res.Env)
 	if err := module.CheckInputs(slot, wf.Contract, hasKV, hasEnv); err != nil {
 		return nil, err
 	}
 
+	ctx = module.WithEnv(ctx, res.Env)
 	r := *runner
 	r.SkipRunRecord = true
 	r.KVTaskID, r.KVAttemptID, r.KeepContext = kvTask, kvAttempt, true

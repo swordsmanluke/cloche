@@ -123,8 +123,8 @@ type Resolved struct {
 	// Source describes where the choice came from, e.g. "bind in file
 	// security.cloche", "project workflow" or "built-in".
 	Source string
-	// Env is the chosen bind's literal settings (nil when none). Not yet
-	// injected into slot runs.
+	// Env is the literal settings carried by the winning bind (nil if none).
+	// Callers merge it under the call's `with` env via MergeEnv.
 	Env map[string]string
 }
 
@@ -146,36 +146,35 @@ func (rs *Resolver) ResolveSlot(stack CallStack, slot string) (*Resolved, error)
 	var chosenScope Scope
 	var chosenFrame string
 	var forced bool
+	var considerScope func(sc Scope, frame string, match func(domain.Bind) bool) bool
 
 	consider := func(sc Scope, frame string) {
-		// Walk each scope back to front so the last duplicate wins. A
-		// per-slot bind beats a group bind in the same scope, wherever each
-		// is written.
-		for pass := 0; pass < 2; pass++ {
-			found := false
-			for i := len(sc.Binds) - 1; i >= 0; i-- {
-				b := sc.Binds[i]
-				if pass == 0 && (b.Group != "" || b.Slot != slot) {
-					continue
-				}
-				if pass == 1 && !(b.Group != "" && b.InGroup(slot)) {
-					continue
-				}
-				found = true
-				switch {
-				case b.Force:
-					// Visited innermost first, so a later bind! is further out
-					// and replaces an earlier one: the outermost bind! wins.
-					chosen, chosenScope, chosenFrame, forced = &b, sc, frame, true
-				case !forced && chosen == nil:
-					// The first normal bind seen is the innermost.
-					chosen, chosenScope, chosenFrame = &b, sc, frame
-				}
+		// A per-slot bind beats a group bind in the same scope, so look for
+		// exact matches first and fall back to group matches.
+		if !considerScope(sc, frame, func(b domain.Bind) bool { return !b.Group && b.Slot == slot }) {
+			considerScope(sc, frame, func(b domain.Bind) bool { return b.Group && domain.InBindGroup(b.Slot, slot) })
+		}
+	}
+	considerScope = func(sc Scope, frame string, match func(domain.Bind) bool) bool {
+		found := false
+		// Walk each scope back to front so the last duplicate wins.
+		for i := len(sc.Binds) - 1; i >= 0; i-- {
+			b := sc.Binds[i]
+			if !match(b) {
+				continue
 			}
-			if found {
-				break
+			found = true
+			switch {
+			case b.Force:
+				// Visited innermost first, so a later bind! is further out
+				// and replaces an earlier one: the outermost bind! wins.
+				chosen, chosenScope, chosenFrame, forced = &b, sc, frame, true
+			case !forced && chosen == nil:
+				// The first normal bind seen is the innermost.
+				chosen, chosenScope, chosenFrame = &b, sc, frame
 			}
 		}
+		return found
 	}
 	for i := len(stack) - 1; i >= 0; i-- {
 		fr := stack[i]
@@ -192,7 +191,11 @@ func (rs *Resolver) ResolveSlot(stack CallStack, slot string) (*Resolved, error)
 	}
 
 	if chosen != nil {
-		wf, err := rs.resolveBound(*chosen, slot, chosenScope)
+		target := *chosen
+		if target.Group {
+			target.Slot = slot // expand the group bind to this slot
+		}
+		wf, err := rs.resolveTarget(target, chosenScope)
 		if err != nil {
 			return nil, fmt.Errorf("slot %q: bind in %s scope (%s): %w", slot, chosenScope.Kind, chosenFrame, err)
 		}
@@ -209,22 +212,6 @@ func (rs *Resolver) ResolveSlot(stack CallStack, slot string) (*Resolved, error)
 	return nil, fmt.Errorf("workflow %q not found: no bind, project workflow, or built-in: %w", slot, ErrSlotNotFound)
 }
 
-// resolveBound resolves bind b for slot. A group bind expands to the target
-// module's export named after the slot.
-func (rs *Resolver) resolveBound(b domain.Bind, slot string, sc Scope) (*domain.Workflow, error) {
-	if b.Group == "" {
-		return rs.resolveTarget(b, sc)
-	}
-	reg := rs.Registry
-	if reg == nil {
-		reg = &Registry{}
-	}
-	if _, ok := reg.Modules[b.Target]; !ok {
-		return nil, fmt.Errorf("group bind %s = %s: target must be an installed module", b.Group, b.Target)
-	}
-	return reg.Export(b.Target, slot)
-}
-
 // resolveTarget resolves a bind's right-hand side: `module:workflow`, a bare
 // module name (exporting a workflow named after the slot), or a workflow name.
 func (rs *Resolver) resolveTarget(b domain.Bind, sc Scope) (*domain.Workflow, error) {
@@ -233,10 +220,19 @@ func (rs *Resolver) resolveTarget(b domain.Bind, sc Scope) (*domain.Workflow, er
 		reg = &Registry{}
 	}
 	if mod, name, ok := splitTarget(b.Target); ok {
+		if b.Group {
+			return nil, fmt.Errorf("group bind: target %q must be a module name, not module:workflow", b.Target)
+		}
 		return reg.Export(mod, name)
 	}
 
 	_, isModule := reg.Modules[b.Target]
+	if b.Group && !isModule {
+		return nil, fmt.Errorf("group bind %q: target %q must be an installed module", b.Slot, b.Target)
+	}
+	if b.Group {
+		return reg.Export(b.Target, b.Slot)
+	}
 	var local *domain.Workflow
 	if sc.Module != "" {
 		if m, ok := reg.Modules[sc.Module]; ok {

@@ -27,6 +27,10 @@ three workflow phases for orchestration:
 Each phase name (and `release-task` / `close-task`) resolves through the root binds in
 `project.cloche`, so a tracker module can provide it. See [`docs/modules.md`](modules.md)
 for modules, contracts and binds, and for the `beads-tasks` / `github-tasks` trackers.
+A group bind (`bind tasks = beads-tasks`) fills every tracker phase at once, and
+`{ env.X = "..." }` bind settings reach the phase's run (daemon env < bind settings <
+a step's `with`); see *Group binds* and *Bind settings* there. The reserved group names
+are `qa` and `tasks`.
 
 Additionally, a **`release-task`** host workflow may be defined. This is not part of the
 automatic orchestration loop — it is invoked on demand (e.g. from the web dashboard) to

@@ -239,7 +239,7 @@ func (p *Parser) parseBindEntry(force bool) (domain.Bind, error) {
 	}
 	b := domain.Bind{Slot: slot.Literal, Target: t, Force: force}
 	if _, ok := domain.BindGroups[b.Slot]; ok {
-		b.Group = b.Slot
+		b.Group = true
 	}
 	if p.current.Type == TokenLBrace {
 		env, err := p.parseBindSettings(slot.Literal)
@@ -251,20 +251,31 @@ func (p *Parser) parseBindEntry(force bool) (domain.Bind, error) {
 	return b, nil
 }
 
-// parseBindSettings parses `{ env.X = "literal" ... }` after a bind target.
-// Only literals are allowed; there is no caller KV to read from at bind time.
+// parseBindSettings parses a bind's `{ env.X = "literal" ... }` block.
+// Only literal string values are accepted.
 func (p *Parser) parseBindSettings(slot string) (map[string]string, error) {
 	p.advance() // consume {
 	env := map[string]string{}
 	for p.current.Type != TokenRBrace && p.current.Type != TokenEOF {
-		e, err := p.parseWithEntry()
+		key, err := p.expect(TokenIdent)
+		if err != nil || key.Literal != "env" {
+			return nil, fmt.Errorf("line %d col %d: bind %q settings must be env.NAME = \"value\"", p.current.Line, p.current.Col, slot)
+		}
+		if _, err := p.expect(TokenDot); err != nil {
+			return nil, fmt.Errorf("bind %q settings: expected \".\" after env: %w", slot, err)
+		}
+		name, err := p.expect(TokenIdent)
 		if err != nil {
-			return nil, fmt.Errorf("bind %q settings: %w", slot, err)
+			return nil, fmt.Errorf("bind %q settings: expected env var name: %w", slot, err)
 		}
-		if !e.Env || e.Source != domain.WithLiteral {
-			return nil, fmt.Errorf("bind %q settings: only `env.NAME = \"literal\"` entries are allowed (got %q)", slot, e.Key)
+		if _, err := p.expect(TokenEquals); err != nil {
+			return nil, err
 		}
-		env[e.Key] = e.Value
+		val, err := p.expect(TokenString)
+		if err != nil {
+			return nil, fmt.Errorf("bind %q settings: env.%s must be a quoted literal: %w", slot, name.Literal, err)
+		}
+		env[name.Literal] = val.Literal
 	}
 	if _, err := p.expect(TokenRBrace); err != nil {
 		return nil, err

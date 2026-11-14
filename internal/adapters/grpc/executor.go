@@ -531,10 +531,12 @@ func (d *DaemonExecutor) envIsSet(ctx context.Context, callEnv map[string]string
 
 // startCall seeds the child's KV and env from the step's `with` block, then
 // checks the callee's contract inputs. A non-nil error is a contract error
-// and the child must not start. The returned env is the `with` env to hand to
-// the child run.
-func (d *DaemonExecutor) startCall(ctx context.Context, step *domain.Step, slot string, callee *domain.Workflow) (map[string]string, error) {
-	kv, env := module.SeedWith(step.With, func(key string) (string, bool) { return d.kvGet(ctx, key) })
+// and the child must not start. The returned env is the env to hand to the
+// child run: the resolved bind's settings overlaid by the `with` env.
+func (d *DaemonExecutor) startCall(ctx context.Context, step *domain.Step, slot string, callee *domain.Workflow, bindEnv map[string]string) (map[string]string, error) {
+	kv, withEnv := module.SeedWith(step.With, func(key string) (string, bool) { return d.kvGet(ctx, key) })
+	// Bind settings sit under the step's own `with` env.
+	env := module.MergeEnv(bindEnv, withEnv)
 	if d.store != nil && d.taskID != "" {
 		for k, v := range kv {
 			if err := d.store.SetContextKey(ctx, d.taskID, d.attemptID, d.kvRunID(), k, v); err != nil {
@@ -617,7 +619,7 @@ func (d *DaemonExecutor) executeWorkflowStep(ctx context.Context, step *domain.S
 
 	// Seed the child's KV/env from `with` and enforce contract inputs before
 	// anything starts.
-	callEnv, contractErr := d.startCall(ctx, step, targetName, targetWF)
+	callEnv, contractErr := d.startCall(ctx, step, targetName, targetWF, resolved.Env)
 	if contractErr != nil {
 		return d.contractFailed(ctx, step, contractErr), nil
 	}
