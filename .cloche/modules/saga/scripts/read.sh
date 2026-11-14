@@ -10,8 +10,10 @@ id="$(cloche get question_id)"
 json="$(saga_show "$id")" || { echo "error: saga show $id failed" >&2; exit 1; }
 # Human first, else the latest answer; deprecated answers are not in force.
 text="$(printf '%s' "$json" | jq -r '
-  [(.answers // [])[] | select((.status.state // "") != "deprecated")]
-  | (map(select(.author.kind == "human")) | last) // last
+  def author: (.author | if type == "object" then .kind else . end) // "";
+  def state: (.status | if type == "object" then .state else . end) // "";
+  [(.answers // [])[] | select(state != "deprecated")]
+  | (map(select(author == "human")) | last) // last
   | .text // empty')"
 if [ -z "$text" ]; then
   echo "error: no answer for question $id" >&2

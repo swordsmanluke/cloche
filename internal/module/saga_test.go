@@ -168,3 +168,43 @@ func TestSagaModule_FilesShip(t *testing.T) {
 	_, err = os.Stat(filepath.Join(dir, "asking.md"))
 	assert.NoError(t, err)
 }
+
+// readRealShape runs read.sh against a saga stub that prints the given JSON
+// verbatim for `saga show`, i.e. the shape real Saga emits (string author,
+// possibly null status), not the older object-author stub shape.
+func readRealShape(t *testing.T, showJSON string) (string, error) {
+	b := newSagaBackend(t)
+	fixture := filepath.Join(b.dir, "show.json")
+	write(t, fixture, showJSON)
+	write(t, filepath.Join(b.dir, "bin", "saga"), "#!/usr/bin/env bash\ncat "+fixture+"\n")
+	require.NoError(t, os.Chmod(filepath.Join(b.dir, "bin", "saga"), 0o755))
+	return b.Read("Q1")
+}
+
+func TestSagaModule_ReadAcceptsRealShapedAnswer(t *testing.T) {
+	got, err := readRealShape(t, `{"id":"Q1","status":{"state":"in-force"},"answers":[`+
+		`{"author":"human","select":[1],"status":null,"text":"use option one"}]}`)
+	require.NoError(t, err)
+	assert.Equal(t, "use option one\n", got)
+}
+
+func TestSagaModule_ReadPrefersHumanOverAgent(t *testing.T) {
+	got, err := readRealShape(t, `{"id":"Q1","answers":[`+
+		`{"author":"human","status":null,"text":"human says"},`+
+		`{"author":"agent","status":null,"text":"agent says"}]}`)
+	require.NoError(t, err)
+	assert.Equal(t, "human says\n", got)
+}
+
+func TestSagaModule_ReadSkipsDeprecatedAndFailsWithoutAnswers(t *testing.T) {
+	got, err := readRealShape(t, `{"id":"Q1","answers":[`+
+		`{"author":"agent","status":null,"text":"first"},`+
+		`{"author":"agent","status":null,"text":"later"},`+
+		`{"author":"agent","status":{"state":"deprecated"},"text":"old"}]}`)
+	require.NoError(t, err)
+	assert.Equal(t, "later\n", got)
+
+	_, err = readRealShape(t, `{"id":"Q1","answers":[]}`)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "no answer")
+}
