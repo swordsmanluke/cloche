@@ -1,51 +1,65 @@
 # Documentation Audit Report
 
+Docs live in `repos/cloche/docs/`. Line numbers are approximate. Source paths are relative to `repos/cloche`.
+
 ## docs/USAGE.md
-- **Line ~1121-1131**: `cloche run` synopsis/flag table omit `--repos a,b` (source: cmd/cloche/main.go:275, cmd/cloche/help.go:174). Only mentioned in passing at ~134.
-- **Line ~1003-1007**: `cloche init` synopsis omits `--no-commit` (listed in table at ~1022) (source: cmd/cloche/init.go:1119).
-- **Line ~1286-1292**: `cloche list` flag table omits `--issue, -i <filter>` (source: cmd/cloche/main.go:1017).
-- **Line ~1544, ~1561**: `cloche intent preview` omits `--repos <list>` and the `-p` short form of `--prompt` (source: cmd/cloche/intent.go:585,595).
-- **Line ~1914-1922**: `cloche threads list` omits `--no-color` (source: cmd/cloche/threads.go:55).
-- **Line ~2040**: `active` default documented as `true`; config loader default is `false` (unset). `true` is only what `cloche init` writes (source: internal/config/config.go:203-229, cmd/cloche/init.go:165).
-- **Line ~2017**: Layout lists `.cloche/activity.log`; activity is stored in the SQLite `activity` table (source: internal/adapters/sqlite/store.go:322, cmd/cloche/activity.go:77).
-- **Line ~2304**: Client `CLOCHE_HTTP` default stated as `localhost:8080`; `cloche health` has no default and errors if unset, only `cloche tasks` falls back (source: cmd/cloche/health.go:35-51, cmd/cloche/main.go:1507).
-- **Line ~103** (omission): `container {}` key list lacks `profile`, `dra`, `notes` (source: internal/dra/wake.go:114-117, internal/adapters/docker/locked.go:235).
+- **~L299, ~L1133**: Says `--prompt` is written to `.cloche/<run-id>/prompt.txt`. Source writes `.cloche/runs/<task-id>/prompt.txt` (`internal/adapters/docker/runtime.go:375-381`, `internal/adapters/grpc/executor.go:1009`).
+- **~L1093-1111 (`cloche doctor`)**: Check list omits the intent store check (`checkIntentStore`, `cmd/cloche/doctor.go:121,483-492`).
+- **~L501-512 (host step env table)**: Omits `CLOCHE_MODULE_DIR` (`internal/host/executor.go:248`) and `CLOCHE_RESULT_NONCE` (`executor.go:292`).
+- **~L2008-2010**: Says zsh completion file is `~/.cloche/completions/_cloche`; code writes `cloche.zsh` (`cmd/cloche/completion_scripts.go:70`).
+- **~L2001 (`cloche complete`)**: Says `logs`, `resume`, `delete` all suggest the last 20 runs. Only `resume`/`delete` do (`internal/adapters/grpc/server.go:2572-2577`, `2724-2726`). `logs` suggests task IDs and `task:attempt` IDs, falling back to runs only with no tasks (`server.go:2557-2567`, `2667`).
+- **~L1741 (`cloche tasks`)**: Says it requires `CLOCHE_HTTP`. Code falls back to `localhost:8080` (`cmd/cloche/main.go:1505-1508`, `cmd/cloche/tasks_phase.go:170-172`). Doc itself says so at ~L2329.
+- **~L1865-1868 (`cloche version`)**: Says agent version comes from the project's container image. Code uses `CLOCHE_IMAGE` or `cloche-agent:latest` (`cmd/cloche/main.go:1833-1855`).
+- **~L2356 (`CLOCHE_AGENT_COMMAND`)**: Says the daemon injects it into the container. The Docker runtime does not set it (`internal/adapters/docker/runtime.go:150-181`); `cloche-agent` only reads it (`internal/agent/session.go:154`). `CLOCHE_PROJECT_DIR` is set per step by `cloche-agent` (`session.go:544,600`).
+- **~L1557**: `cloche intent preview` usage omits `--repos` (`cmd/cloche/intent.go:595`).
+- **~L1765**: `cloche signals token` also accepts `-p` (`cmd/cloche/signals.go:36`); undocumented.
+- **~L2317 (borderline)**: `CLOCHE_HTTP` default `localhost:8080` comes only from the global config written by `cloche init`; the daemon's own fallback is empty (`cmd/cloched/main.go:215`).
 
 ## docs/workflows.md
-- **Lines ~173, 213, 415, 465, 492, 509, 529, 563, 571, 603, 615, 860**: Examples use `workflow "name" {`; parser requires a bare identifier and rejects quoted names (source: internal/dsl/parser.go:493, internal/dsl/lexer.go:68-69).
-- **Lines ~7-14 vs ~716**: Locations section says `poll` is host-only; Poll section says it works in both, and no restriction exists (source: internal/domain/workflow.go `ValidateLocation`, internal/dsl/parser.go:871-890).
-- **Line ~382**: Says the parser checks wiring/orphans; that is `Workflow.Validate()` (source: internal/domain/workflow.go, internal/dsl/parser.go:581-645).
-- **Line ~731**: Poll `results` implicit `timeout` only; every step also gets implicit `token-limit` (source: internal/dsl/parser.go:613-645).
-- **Line ~982**: `prev_step_exit` described as exit code; it holds the previous step's result name (source: internal/host/executor.go:143, internal/engine/engine.go:421).
-- **Line ~966**: Context keys said to be seeded for every run; only seeded when TaskID != "" and Store != nil (source: internal/host/executor.go:109-114).
-- **Line ~1000**: `child_repos` described as repos the sub-workflow declared; it is the repos prepared/extracted for the run (source: internal/adapters/grpc/executor.go:899-950).
-
-## docs/guide/
-- **2-steps.md (~line 62)**: Agent example `step code` lacks opening `{`; won't parse (source: internal/dsl/parser.go:818).
-- **2-steps.md (~line 34)**: Says all steps print `CLOCHE_RESULT:<step>:<result>` with nonce; nonce form is required only for agent steps, others use bare form (source: internal/host/executor.go:268-270,342; internal/adapters/agents/prompt/prompt.go:570-586). Also contradicts 8-patterns.md.
-- **2-steps.md (~line 22)**: Says `success`/`fail` are implicit and exit 0 maps to success; only `timeout` and `token-limit` are implicit, and agent steps with no marker are `fail` (source: internal/dsl/parser.go:581-645).
-- Other guide pages (README, 1, 3, 4, 5, 6, 7, 8): no verifiable errors.
-
-## docs/web-dashboard.md
-- **Line ~32-33**: Says `cloche health` requires `CLOCHE_HTTP`; it also falls back to `[daemon] http` in config (source: cmd/cloche/health.go:32-58).
-- **Lines ~92-96**: `POST /trigger`, `POST /loop/stop`, `GET /loop/occupancy`, `GET /usage` shown as bare paths; real routes are project-scoped, e.g. `/api/projects/{name}/trigger` (source: internal/adapters/web/handler.go:376,393-398). Shorthand, minor.
-
-## docs/intent.md
-- **Line ~313-314**: Says `--full` re-mines only the one repo, not `[[repositories]]`; source mines project root plus all configured repos, and the doc contradicts itself at ~232-247 (source: cmd/cloche/intent.go:834-841,962-969; internal/intent/scan/collect.go:170-222).
-- **Line ~448**: `cloche intent preview` synopsis omits `--repos <a,b>` (source: cmd/cloche/intent.go:595).
-- **Line ~137**: "configured globs" implies a config key; none exists, only defaults (source: internal/config/config.go:115-121, internal/intent/scan/collect.go:26).
+- **~L254, ~L528**: Lists `CLOCHE_AGENT_COMMAND` in agent resolution order for all workflows. Host workflows never read it (`internal/host/executor.go:386-398`, `internal/host/runner.go:194-198`); only in-container `cloche-agent` does (`internal/agent/session.go:154`).
+- **~L10**: Says container workflows use `agent`, `script`, or `workflow` steps. `poll` is also supported (`internal/agent/session.go:451`), as the doc's own Poll section says (~L723).
+- **~L987 (`prev_step_exit`)**: Says it is an exit code. Source stores the result name, e.g. `success` (`internal/host/executor.go:143`, `internal/engine/engine.go:421,458`).
+- **~L1000-1009 (`child_*` keys)**:
+  - Only `child_run_id` is set after completion (`internal/adapters/grpc/executor.go:828`). The other keys are written when extract worktrees are prepared, before the run (`executor.go:~899-975`).
+  - Bare `child_branch` is written only when exactly one worktree was prepared (`executor.go:973-974`).
+  - `child_repos` holds extract repo names from the attempt's repo selection, written for single-repo runs too, not "repos the sub-workflow declared (multi-repo runs)".
+- **~L973**: Says keys are seeded for every run. Host runs seed only when `TaskID != "" && Store != nil` (`internal/host/executor.go:112`); container-only runs get just `temp_file_dir` (`internal/adapters/grpc/server.go:858`).
+- **~L818**: Poll script env strips `CLOCHE_RUN_ID`, `CLOCHE_TASK_ID`, and `CLOCHE_ATTEMPT_ID`, not only `CLOCHE_RUN_ID` (`internal/host/executor.go:~846-852`).
+- **~L49-60 (task JSONL table)**: Omits `priority` and `labels` (`internal/host/task.go:23-30`).
+- **~L72**: Names only `intent-scan` and `intent-scan-repo` as built-ins; `handle-notification` is also registered (`internal/builtin/builtin.go:16-20`).
+- **~L148-150**: Says step `token-limit = 0` "aborts immediately". It yields a `token-limit` result routed by wiring (default `abort`); only a workflow-level 0 fails the run (`internal/engine/engine.go:223-232,285-289`).
 
 ## docs/modules.md
-- **Line ~183**: Lists `cloche module update <name>` only; real usage is `update <name> [<ref>] [--yes|-y]`, and all subcommands accept `--project/-p` (source: cmd/cloche/module.go:50-80,147-152).
+- Accurate against `internal/module/*`, `internal/domain/workflow.go`, `cmd/cloche/module.go`.
+- Source note (not a doc error): host poll steps do not receive `CLOCHE_MODULE_DIR` (`internal/host/executor.go:~835`), though the doc says module `run` commands get it and the shipped `saga-judge` `await-answer` poll uses it. Likely a source bug.
 
-## docs/INSTALL.md
-- **Line ~22-23** (minor): Says `make install` builds `cloche-agent:latest`; it also builds `cloche-base:latest` and, if `saga` is on PATH, `cloche-dra:latest` (source: Makefile `docker-build`, `docker-dra`).
+## docs/built-in-agents.md
+- **~L128**: Same `CLOCHE_AGENT_COMMAND` problem as workflows.md; not read for host workflows (`internal/agent/session.go:154`).
+- Omission: `agent_command` may be a comma-separated fallback chain (`internal/adapters/agents/prompt/prompt.go:156`).
 
-## docs/SAFETY.md, docs/agent-setup-claude.md, docs/agent-setup-codex.md, docs/built-in-agents.md, docs/dras.md
-- Fully accurate against source for everything checked.
+## docs/SAFETY.md
+- **~L146-156**: Says a copy of the project, "not a bind mount". The run directory `.cloche/runs/<run-id>` is bind-mounted read-write, and `cfg.Volumes` mounts are added (`internal/adapters/docker/runtime.go:~190-200`). Only the project tree is copied.
+- **~L139-141**: Says the base image runs as unprivileged `agent`. `docker/cloche-base/Dockerfile` has no `USER`; the runtime starts as root, chowns, then drops to `agent` via `gosu` (`runtime.go:~244-262`).
+
+## docs/web-dashboard.md
+- **~L32**: Says `cloche health` requires `CLOCHE_HTTP`. It also falls back to `[daemon] http` in the global config; it errors only if neither is set (`cmd/cloche/health.go:30-49`).
+
+## docs/intent.md
+- **~L460-468**: Says the console has no Intent panel (placeholder). Console has a Requirements button and `intent-drawer` (`internal/adapters/web/templates/console.html:21,109-114`); web-dashboard.md ~L346-351 documents it.
+- **~L442-448**: `preview` synopsis omits `--repos` and the `-p` short form (`cmd/cloche/intent.go:575-595`).
+- **~L229**: Implies doc globs are configurable. `IntentConfig` has no such key (`internal/config/config.go:115-121`); globs are hardcoded (`internal/intent/scan/collect.go:27-32`).
+- Omission (~L316-325): post-task scan is also skipped when the daily budget cap is reached (`internal/adapters/grpc/server.go:~4095`).
+
+## docs/INSTALL.md, docs/agent-setup-claude.md, docs/dras.md
+- No inaccuracies found.
+
+## docs/agent-setup-codex.md
+- No inaccuracies found. A subagent claimed `[agents.codex] usage_command` is never read; that was wrong. It is applied for host steps when the command is codex (`internal/host/executor.go:403-404`). Not verified for in-container steps.
 
 ## Not audited
-- docs/CHANGELOG-DETAILED.md and subdirectories docs/design, docs/plans, docs/init, docs/run-isolation.
+- `docs/CHANGELOG-DETAILED.md` (a changelog, not usage docs).
+- Subagents did not exhaustively verify every table cell, e.g. the `cloche validate` check list and the DSL step-config validation rules in USAGE.md.
 
 ## Summary
-- 26 errors/mismatches found across 7 files (USAGE.md 9, workflows.md 7, guide 3, web-dashboard.md 2, intent.md 3, modules.md 1, INSTALL.md 1; several are omissions or minor shorthand).
+- 32 findings across 7 files: USAGE.md 11, workflows.md 9, built-in-agents.md 2, SAFETY.md 2, web-dashboard.md 1, intent.md 4, plus the modules.md source note (not counted).
+- Most were verified by a subagent only; I re-checked the codex claim and retracted it.
