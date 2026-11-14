@@ -116,7 +116,8 @@ running a shell command after each agent step and parsing its JSON output.
 ### Via `config.toml` (recommended for all Codex steps)
 
 Add an `[agents.codex]` section to `.cloche/config.toml`. The command is run
-automatically whenever the active agent command is `codex`:
+automatically by the host executor whenever the active agent command is `codex`. Container
+steps do not read it; set the step-level `usage_command` instead (see below):
 
 ```toml
 [agents.codex]
@@ -135,7 +136,7 @@ token tracking is best-effort and never blocks execution.
 ### Via step config (per-step override)
 
 Set `usage_command` directly on a step to override or supplement the `config.toml`
-default:
+default. This is required for steps that run in a container (`container {}` workflows):
 
 ```
 step implement {

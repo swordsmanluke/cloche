@@ -309,9 +309,9 @@ rather than re-mining forever. `discover-domains` does a full domain survey rega
 of whether `domains.yaml` already exists. Neither step discards existing requirements —
 `reconcile`/`apply-reconcile` still run as usual, merging or superseding candidates
 against what's already tracked. Before dispatching, `cloche intent scan --full` prints
-what it's about to re-mine (doc/commit/run counts). Because `collect-sources` roots
-every source strictly at the project directory (see the multi-repo caveat above),
-`--full` re-mines that one repo, not any `[[repositories]]` entries.
+what it's about to re-mine (doc/commit/run counts). Because `--full` resets `ScanState`,
+`collect-sources` re-walks the project directory plus every configured
+`[[repositories]]` entry, and the preview covers all of them.
 
 **Incremental scans on task completion.** By default (`intent.scan_after_tasks = true`),
 an incremental scan is enqueued automatically after each completed `main` orchestration
@@ -459,9 +459,9 @@ subcommand reference.
 
 ## Web dashboard
 
-The console shell's centre pane doesn't surface an Intent panel yet (it's a placeholder
-pending the detail-pane ticket — see [`docs/web-dashboard.md`](web-dashboard.md)). The
-backing HTTP API remains available for scripting or a future UI: requirements CRUD
+The console has an intent view, opened with `i` (the Requirements view — see
+[`docs/web-dashboard.md`](web-dashboard.md)). The backing HTTP API is also available for
+scripting: requirements CRUD
 (`GET`/`PATCH /api/projects/{name}/intent/requirements`), the domain map
 (`GET`/`PUT /api/projects/{name}/intent/domains`), scan dispatch
 (`POST /api/projects/{name}/intent/scan`), and source doc content

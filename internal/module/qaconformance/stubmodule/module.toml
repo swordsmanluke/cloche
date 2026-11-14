@@ -1,0 +1,3 @@
+name        = "stub"
+description = "Test-only qa backend over the qa-stub tool (conformance suite)"
+exports     = ["ask", "await-answer", "read-answer"]

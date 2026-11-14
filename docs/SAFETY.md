@@ -137,14 +137,16 @@ tighter control, you can specify DNS servers that only resolve your allowlisted 
 or use a DNS-based firewall.
 
 **Avoid `--privileged` and `--cap-add`.** Cloche containers do not need elevated
-capabilities. The base image runs as an unprivileged `agent` user. Never run Cloche
+capabilities. The container starts as root only to fix ownership, then drops privileges
+(`gosu agent`), so the agent process runs as an unprivileged `agent` user. Never run Cloche
 containers with `--privileged` or add capabilities like `NET_ADMIN` unless you have a
 specific, justified need.
 
 ## Filesystem Isolation
 
-Cloche containers get a *copy* of your project, not a bind mount. This is a deliberate
-security choice:
+Cloche containers get a *copy* of your project, not a bind mount of it. (The one
+exception is the run directory `.cloche/runs/<runID>`, which is bind-mounted at
+`/workspace/.cloche/runs/<runID>`.) This is a deliberate security choice:
 
 - The agent cannot modify your host filesystem directly.
 - Changes are only extracted back via `docker cp` to a git branch after the run

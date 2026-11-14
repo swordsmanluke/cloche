@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 
 	"github.com/swordsmanluke/cloche/internal/builtin"
 	"github.com/swordsmanluke/cloche/internal/domain"
@@ -22,6 +23,20 @@ const (
 	SlotCreateTask  = "create-task"
 	SlotUpdateTask  = "update-task"
 )
+
+// Slot names of the qa (questions) contract; see docs/modules.md §Questions.
+const (
+	SlotAsk         = "ask"
+	SlotAwaitAnswer = "await-answer"
+	SlotReadAnswer  = "read-answer"
+)
+
+// ErrNoQABind is returned when a questions slot resolves to nothing.
+var ErrNoQABind = errors.New("no qa backend is bound for this project; add `bind qa = <module>` to .cloche/project.cloche (install one with 'cloche module add')")
+
+// ErrPhaseFailed is wrapped by RunTrackerPhase when the phase's workflow ran
+// but ended in a failure state (e.g. read-answer with no answer yet).
+var ErrPhaseFailed = errors.New("phase workflow failed")
 
 // phaseHasEnv reports whether an env var is visible to a phase run: set by
 // the resolved bind or in the daemon's environment.
@@ -208,7 +223,7 @@ func RunTrackerPhase(ctx context.Context, runner *Runner, projectDir, slot strin
 		return nil, fmt.Errorf("%s: %w", slot, err)
 	}
 	if result.State != domain.RunStateSucceeded {
-		return nil, fmt.Errorf("%s workflow finished with state %s", slot, result.State)
+		return nil, fmt.Errorf("%s workflow finished with state %s: %w", slot, result.State, ErrPhaseFailed)
 	}
 	get := func(k string) (string, bool) {
 		v, ok, _ := store.GetContextKey(ctx, kvTask, kvAttempt, result.RunID, k)
@@ -218,10 +233,69 @@ func RunTrackerPhase(ctx context.Context, runner *Runner, projectDir, slot strin
 		return nil, err
 	}
 	out := map[string]string{}
-	for _, k := range []string{"new_task_id", "found_task_id", "task_found", "task_labels", "task_status"} {
+	keys := []string{"new_task_id", "found_task_id", "task_found", "task_labels", "task_status"}
+	if k, ok := qaOutputKeys[slot]; ok {
+		keys = k
+	}
+	for _, k := range keys {
 		if v, ok := get(k); ok {
 			out[k] = v
 		}
 	}
 	return out, nil
+}
+
+// qaOutputKeys is each qa slot's contract output; await-answer's input
+// question_ids must not be echoed back as an output.
+var qaOutputKeys = map[string][]string{
+	SlotAsk:         {"question_ids"},
+	SlotAwaitAnswer: {"questions_open"},
+	SlotReadAnswer:  {"answer_path"},
+}
+
+// RunQuestionPhase runs a qa slot (ask, await-answer, read-answer) through the
+// project's bound module. An unbound slot reports ErrNoQABind.
+func RunQuestionPhase(ctx context.Context, runner *Runner, projectDir, slot string, inputs map[string]string) (map[string]string, error) {
+	out, err := RunTrackerPhase(ctx, runner, projectDir, slot, inputs)
+	if errors.Is(err, module.ErrSlotNotFound) {
+		return nil, ErrNoQABind
+	}
+	return out, err
+}
+
+// QAModule returns the module bound to the qa group, or ErrNoQABind.
+func QAModule(projectDir string) (*module.Module, error) {
+	res, err := resolvePhase(projectDir, SlotAsk)
+	if err != nil {
+		if errors.Is(err, module.ErrSlotNotFound) {
+			return nil, ErrNoQABind
+		}
+		return nil, err
+	}
+	reg, err := module.Load(projectDir)
+	if err != nil {
+		return nil, err
+	}
+	m := reg.ModuleFor(res.Workflow)
+	if m == nil {
+		return nil, fmt.Errorf("the %q slot is not provided by a module (%s)", SlotAsk, res.Source)
+	}
+	return m, nil
+}
+
+// QAGuide returns the bound qa module's asking.md, or judge.md when judge.
+func QAGuide(projectDir string, judge bool) (string, error) {
+	m, err := QAModule(projectDir)
+	if err != nil {
+		return "", err
+	}
+	name := "asking.md"
+	if judge {
+		name = "judge.md"
+	}
+	data, err := os.ReadFile(filepath.Join(m.Dir, name))
+	if err != nil {
+		return "", fmt.Errorf("module %q has no %s", m.Name, name)
+	}
+	return string(data), nil
 }

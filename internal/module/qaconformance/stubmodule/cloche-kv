@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# Stand-in for `cloche get|set` so the module's scripts run without a daemon.
+# Keys live as files in $KV_DIR.
+case "$1" in
+  get) [ -e "$KV_DIR/$2" ] || { echo "kv: $2 not set" >&2; exit 1; }; cat "$KV_DIR/$2" ;;
+  set) printf '%s' "$3" > "$KV_DIR/$2" ;;
+  *) exit 2 ;;
+esac

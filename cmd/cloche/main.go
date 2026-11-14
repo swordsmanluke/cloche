@@ -165,6 +165,13 @@ func main() {
 		}
 		cmdModule(os.Args[2:])
 		return
+	case "questions":
+		if hasHelpFlag(os.Args[2:]) {
+			printSubcommandHelp("questions")
+			return
+		}
+		cmdQuestions(os.Args[2:])
+		return
 	case "validate":
 		if hasHelpFlag(os.Args[2:]) {
 			printSubcommandHelp("validate")

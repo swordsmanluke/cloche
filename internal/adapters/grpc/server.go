@@ -4452,7 +4452,8 @@ func (s *ClocheServer) ReleaseTask(ctx context.Context, projectDir string, taskI
 // RunTrackerPhase runs the create-task or update-task tracker phase with the
 // given inputs and returns its outputs (new_task_id, found_task_id, task_found).
 func (s *ClocheServer) RunTrackerPhase(ctx context.Context, projectDir, slot string, inputs map[string]string) (map[string]string, error) {
-	if slot != host.SlotCreateTask && slot != host.SlotUpdateTask {
+	isQA := slot == host.SlotAsk || slot == host.SlotAwaitAnswer || slot == host.SlotReadAnswer
+	if slot != host.SlotCreateTask && slot != host.SlotUpdateTask && !isQA {
 		return nil, fmt.Errorf("unsupported tracker phase %q", slot)
 	}
 	runner := &host.Runner{
@@ -4461,7 +4462,15 @@ func (s *ClocheServer) RunTrackerPhase(ctx context.Context, projectDir, slot str
 		LogBroadcast: s.logBroadcast,
 	}
 	s.useModuleExecutor(runner, projectDir, slot)
+	if isQA {
+		return host.RunQuestionPhase(ctx, runner, projectDir, slot, inputs)
+	}
 	return host.RunTrackerPhase(ctx, runner, projectDir, slot, inputs)
+}
+
+// QAGuide returns the bound qa module's asking.md (or judge.md).
+func (s *ClocheServer) QAGuide(projectDir string, judge bool) (string, error) {
+	return host.QAGuide(projectDir, judge)
 }
 
 // HandleSignal runs the handle-notification host workflow for sig. It is the

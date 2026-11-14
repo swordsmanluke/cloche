@@ -159,6 +159,30 @@ Transition fallbacks (removed in a future minor release): without `tasks_path` t
 daemon parses `list-tasks` stdout; without a resolvable `claim-task` phase, `main` claims
 the task itself.
 
+## Questions (the `qa` contract)
+
+`bind qa = <module>` fills three slots. `cloche questions` and the daemon's
+`POST /api/projects/{name}/questions/ask|await|read` routes (project signal token required)
+run them as host workflows with the bind's env settings.
+
+| Slot | `kv:` | `out:` | Behavior |
+|---|---|---|---|
+| `ask` | `questions_file` | `question_ids` | `questions_file` is a JSON file `{title, context, questions: [{prompt, detail, options}], backend}` (`backend` is opaque to cloche). Creates one question per entry; `question_ids` is one id per line, in order. |
+| `await-answer` | `question_ids` | `questions_open` | **Non-blocking.** `question_ids` is one id per line; `questions_open` lists those with no answer (empty when all are answered). |
+| `read-answer` | `question_id` | `answer_path` | Path to a file holding the answer text. **Ends `fail` when there is no answer.** When a human and a judge both answered, it returns the human's. |
+
+The module may also ship `asking.md` (how to ask well) and `judge.md` (how a judge should
+answer) at its root; `cloche questions guide [--judge]` serves them. With no module bound
+to `qa`, `ask` fails with "no qa backend is bound ... add `bind qa = <module>`".
+
+### Conformance
+
+`internal/module/qaconformance` is a shared suite every backend module should pass: ask,
+open, answer, none-open, read, and human-beside-judge. Implement its `Backend` interface
+(run the three slots, plus a way to answer through the module's own tool) and call
+`qaconformance.Run(t, newBackend)`. Its embedded `stubmodule/` (scripts over a `qa-stub`
+tool) is the reference implementation and the suite's own test.
+
 ## Asking in Saga: `saga-judge`
 
 `.cloche/modules/saga-judge` lets a workflow ask in Saga and wait, with a judge agent

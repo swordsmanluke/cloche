@@ -57,6 +57,8 @@ workflow develop {
 | `usage_command` | string | Shell command to run after an agent step completes to capture token usage. Output must be JSON: `{"input_tokens": N, "output_tokens": N}`. If absent or the command fails, usage is not tracked. Overrides any adapter-level default (e.g. from `[agents.codex]` in `config.toml`). |
 | `prompt_step` | string | For workflow steps: which preceding step's output to use as the prompt. |
 | `repository` | string | Repository name (from `[[repositories]]` in `config.toml`) this host workflow step touches. Used only to attribute the run to that repo's console sub-tab (see [Repo sub-tabs](web-dashboard.md#repo-sub-tabs)) when the workflow itself doesn't declare `repos`; it does not change which files the step can access. |
+| `poll` | string | Polling script/command. Makes this a poll step; requires `interval`. See [Poll Step](workflows.md#poll-step). |
+| `interval` | string | Poll frequency as Go duration, e.g. `"5m"`. Used with `poll`. |
 | `skip` | string | Shell command run before the step; exit 0 bypasses the step (follows `success` wire or a `CLOCHE_RESULT:<name>` marker). Exit non-zero runs the step normally. See [Skip Scripts](workflows.md#skip-scripts). |
 | `poll` | string | Shell command that makes this a poll step. See [Poll Step](workflows.md#poll-step). |
 | `interval` | string | Poll step interval as a Go duration. Used with `poll`. |
@@ -296,7 +298,7 @@ Rules:
 When an agent step runs, Cloche assembles a prompt from these sections (joined by blank lines):
 
 1. **Step template**: The step's `prompt` content (inline string or resolved `file("path")`), after `{{ }}` template expansion (see below).
-2. **User request**: Content of `.cloche/<run-id>/prompt.txt` (set via `--prompt` flag), prefixed with `## User Request`. Skipped if the template consumed it via `{{ $task_description }}`.
+2. **User request**: Content of `.cloche/runs/<task-id>/prompt.txt` (set via `--prompt` flag), prefixed with `## User Request`. Skipped if the template consumed it via `{{ $task_description }}`.
 3. **Result selection**: Lists the step's declared results with instructions to print exactly one `CLOCHE_RESULT:{{ $result_nonce }}:<name>` marker. Only added when the step declares `results`.
 4. **Marker protocol reminder**: If nothing assembled so far mentions `CLOCHE_RESULT:` (no declared `results`, and no manual mention in the template), a generic reminder is appended instructing the agent to print the nonced `CLOCHE_RESULT:{{ $result_nonce }}:success` or `...:fail` — since an exit-0 run without a marker is still treated as `fail` (see Result Protocol above).
 
@@ -1130,7 +1132,7 @@ cloche run <workflow>[:<step>] [--prompt "..."] [--title "..."] [--issue ID] [--
 |-----------------|-------------|
 | `<workflow>` | Workflow name. Resolves to `.cloche/<name>.cloche`, or a built-in workflow (e.g. `intent-scan`) not overridden by a project file of the same name. |
 | `<workflow>:<step>` | Run starting at a specific step within the workflow. |
-| `--prompt "..."`, `-p` | Inline prompt written to `.cloche/<run-id>/prompt.txt`. |
+| `--prompt "..."`, `-p` | Inline prompt written to `.cloche/runs/<task-id>/prompt.txt`. |
 | `--title "..."` | One-line summary for status display. Auto-generated if omitted. |
 | `--issue ID`, `-i` | Associate an existing task/issue ID with the run. Without this flag, a User-Initiated task is created automatically. |
 | `--repos a,b` | Comma-separated repository names (from `[[repositories]]`) the run touches. |
@@ -1554,7 +1556,7 @@ cloche intent edit <id> [--project <dir>]
 cloche intent disable <id> [--project <dir>]
 cloche intent enable <id> [--project <dir>]
 cloche intent add "<statement>" [--domain <name>]... [--repo <name>]... [--project <dir>]
-cloche intent preview [--workflow <name>] [--step <name>] [--prompt "..."] [--project <dir>]
+cloche intent preview [--workflow <name>] [--step <name>] [--prompt "..."] [--repos a,b] [--project <dir>]
 cloche intent scan [--full]
 ```
 
@@ -1624,6 +1626,41 @@ cloche module remove <name> [--project <dir>]
 | `remove` | Removes the lock entry and the vendored directory (a local-path module's directory is left untouched). |
 
 Vendored files are not committed automatically — review and commit them along with `.cloche/modules.lock`.
+
+### `cloche questions`
+
+Ask questions through the project's bound `qa` backend module, poll for answers, and read them back. Add `bind qa = <module>` to `.cloche/project.cloche` first; without it `ask` fails and names that line.
+
+```
+cloche questions ask --file <path> [--no-judge] [--project <dir>]
+cloche questions await [<id>...] [--project <dir>]
+cloche questions read <id> [--project <dir>]
+cloche questions guide [--judge] [--project <dir>]
+```
+
+| Subcommand | Description |
+|------------|-------------|
+| `ask` | Posts every question in the file and prints one new id per line. A malformed file is rejected (nothing is created) with an error naming the problem. `--no-judge` is accepted and currently has no effect. |
+| `await` | One non-blocking check. Prints `CLOCHE_RESULT:answered` when no question is open and nothing otherwise, so it works unchanged as a `poll =` command. |
+| `read` | Prints the answer. Exits 1 when the question has none. A human answer wins over a judge answer. |
+| `guide` | Prints the bound module's `asking.md`; `--judge` prints its `judge.md`. |
+
+The question file is YAML or JSON:
+
+```yaml
+title: Schema choice
+context: Why we are asking
+questions:
+  - prompt: Which database?
+    detail: optional longer text
+    options:
+      - {label: postgres, description: relational, recommended: true}
+backend: {}   # optional, opaque: passed through to the bound module
+```
+
+`title` and each `prompt` are required. See `docs/plans/2026-11-13-qa-backends-design.md`.
+
+The CLI calls the daemon's HTTP routes (`POST /api/projects/{name}/questions/ask|await|read`, `GET .../questions/guide`), authenticated with the project's signal token like `cloche tasks create`; the daemon runs the bound module's `ask`, `await-answer` and `read-answer` slots with the bind's env settings. `ask` records the returned ids in `.cloche/questions.ids` (gitignored), which a bare `await` checks. The module contract is in [`docs/modules.md`](modules.md#questions-the-qa-contract).
 
 ### `cloche get`
 

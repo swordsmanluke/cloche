@@ -29,8 +29,9 @@ Choose any available port. For a specific interface:
 http = "127.0.0.1:8080"
 ```
 
-The CLI command `cloche health` also requires `CLOCHE_HTTP` to be set, since it talks
-to the daemon's HTTP API. `cloche tasks` falls back to `localhost:8080` when `CLOCHE_HTTP`
+The CLI command `cloche health` needs the daemon's HTTP address, since it talks
+to the daemon's HTTP API. It uses `CLOCHE_HTTP`, falling back to `[daemon] http` in
+`~/.config/cloche/config`, and errors only if neither is set. `cloche tasks` falls back to `localhost:8080` when `CLOCHE_HTTP`
 is unset.
 
 If the configured port is unavailable when the daemon starts (e.g. still held by a

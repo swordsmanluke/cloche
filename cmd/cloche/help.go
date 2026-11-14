@@ -766,6 +766,39 @@ Examples:
   cloche module update jira-tasks
   cloche module remove jira-tasks
 `,
+	"questions": `cloche questions — Ask questions through the bound qa backend
+
+Usage:
+  cloche questions ask --file <path> [--no-judge] [--project <dir>]
+  cloche questions await [<id>...] [--project <dir>]
+  cloche questions read <id> [--project <dir>]
+  cloche questions guide [--judge] [--project <dir>]
+
+Subcommands:
+  ask     Post every question in the file; prints one new id per line.
+          --no-judge is accepted and currently has no effect.
+  await   One non-blocking check. Prints CLOCHE_RESULT:answered when no
+          question is open, nothing otherwise, so it works as a poll command.
+  read    Print the answer to a question; exit 1 when it has none.
+  guide   Print the bound module's asking.md (--judge: judge.md).
+
+The project must bind a backend: add "bind qa = <module>" to
+.cloche/project.cloche. The question file is YAML or JSON:
+
+  title: Schema choice
+  context: Why we are asking
+  questions:
+    - prompt: Which database?
+      detail: optional longer text
+      options:
+        - {label: postgres, description: ..., recommended: true}
+  backend: {}   # optional, opaque, passed to the module
+
+Examples:
+  cloche questions ask --file questions.yaml
+  cloche questions await Q1 Q2
+  cloche questions read Q1
+`,
 	"intent": `cloche intent — View and curate standing project requirements
 
 Requirements are durable statements of intent (constraints and decisions)
@@ -1118,6 +1151,7 @@ Project Setup:
   signals    Show or rotate the token for the signal-intake endpoint
   dra        List and wake the project's Domain Responsible Agents
   module     Install and manage workflow modules
+  questions  Ask questions through the bound qa backend
 
 Workflow Info:
   workflow   List workflows or show a workflow as an ASCII-art graph

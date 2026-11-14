@@ -17,7 +17,7 @@ import (
 var completionSubcommands = []string{
 	"activity", "complete", "console", "debug", "delete", "doctor", "extract",
 	"get", "health", "help", "init", "intent", "list", "logs", "loop", "module",
-	"dra", "poll", "project", "resume", "run", "set", "shutdown", "signals", "status", "stop", "tasks",
+	"dra", "poll", "project", "questions", "resume", "run", "set", "shutdown", "signals", "status", "stop", "tasks",
 	"threads", "validate", "version", "workflow",
 }
 
@@ -229,6 +229,18 @@ func staticCompletions(subcommand string, index int, words []string, cur string)
 			candidates = []string{"add", "list", "update", "remove"}
 		} else if len(words) > 2 && words[2] == "update" {
 			candidates = []string{"--yes", "--project"}
+		}
+
+	case "questions":
+		if index == 2 {
+			candidates = []string{"ask", "await", "read", "guide"}
+		} else if len(words) > 2 {
+			switch words[2] {
+			case "ask":
+				candidates = []string{"--file", "--no-judge", "--project"}
+			case "guide":
+				candidates = []string{"--judge", "--project"}
+			}
 		}
 
 	case "shutdown":

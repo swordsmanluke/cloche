@@ -71,9 +71,12 @@ workflows with a `host {}` block.
 
 Some workflows are constructed in Go and compiled into the `cloched`/`cloche` binaries
 rather than parsed from a project's `.cloche` files, so they work in any project with no
-setup. `intent-scan` (see [`docs/intent.md`](intent.md)) is the first built-in; its
-per-repository sub-workflow `intent-scan-repo` is registered alongside it and is not
-meant to be run on its own.
+setup. The registry (`internal/builtin`) holds `intent-scan` (see
+[`docs/intent.md`](intent.md)), its per-repository sub-workflow `intent-scan-repo` (not
+meant to be run on its own), and `handle-notification` (the default handler for
+[feedback signals](USAGE.md#handle-notification--receiving-feedback-signals)).
+The daemon labels automatically dispatched runs of a built-in with a fixed task title,
+e.g. "Incremental intent scan (post-task)" for the post-task `intent-scan`.
 
 Built-in workflows are resolved *after* project workflow discovery: a project that
 defines its own workflow with the same name overrides the built-in entirely. `cloche
@@ -303,8 +306,8 @@ read). A variable that resolves in neither tier fails the step before the agent 
 
 ### Shell Directive
 
-`{{! cmd }}` runs `cmd` via `sh -c` in the step's working directory. Stdout is trimmed
-of one trailing newline and inserted. Stderr is written to the step log. A non-zero
+`{{! cmd }}` runs `cmd` via `sh -c` in the step's working directory. Stdout has all trailing
+newlines stripped and is inserted. Stderr is written to the step log. A non-zero
 exit fails the step before the agent runs.
 
 `$$` is rewritten to `$` after inner variable resolution, so
@@ -486,8 +489,7 @@ disable injection everywhere, and `token_budget` to cap the injected block's siz
 Workflows support a configuration block at the workflow level to set defaults for all
 steps. The block name depends on the workflow location:
 
-**`container {}`** — For container workflows. Sets container image, agent command, and
-network allowlist.
+**`container {}`** — For container workflows. Sets container image and agent command.
 
 ```
 workflow develop {
@@ -528,9 +530,9 @@ resolution order is: step-level > agent declaration > workflow-level block >
 `CLOCHE_AGENT_COMMAND` env var > default `claude`.
 
 **Step-level `container {}`** — A `container { … }` block may also appear inside an
-individual step body. Keys set there override the workflow-level `container {}` defaults
-for that step only. The keys are stored with a `"container."` prefix on the step's
-config map. This is useful for giving a single step a different image or network policy.
+individual step body. The parser accepts it and stores the keys with a `"container."`
+prefix on the step's config map, but the container start code currently reads only the
+workflow-level `container {}` block, so step-level keys do not override anything.
 
 ```
 workflow develop {
@@ -542,7 +544,7 @@ workflow develop {
   step research {
     prompt = file(".cloche/prompts/research.md")
     container {
-      network_allow = "api.example.com"
+      image = "my-project:research"
     }
     results = [success, fail]
   }
@@ -711,6 +713,13 @@ types — script, poll, and agent. Agent steps receive these variables directly 
 the agent process, so agents running as host-workflow steps can invoke `cloche get/set`
 to read and write the run's KV store. `CLOCHE_PROJECT_DIR` still points to the actual
 project directory.
+
+**Recorded step input.** Agent steps record their rendered prompt as the step's input.
+Script and poll steps have no single text, so the executor records a summary instead
+(`internal/stepinput`): a script step's command, its `CLOCHE_*` environment variables
+with values, the *names only* of other environment variables (so tokens are not copied
+into run metadata), and the KV keys present (no values); a poll step's `interval` and
+condition after interpolation.
 
 ## Poll Step
 
@@ -925,7 +934,7 @@ step create-pr {
 
 | Skip outcome | Behaviour |
 |---|---|
-| Exit 0, no marker on stdout | Skip the step. Follow the `success` wire. |
+| Exit 0, no marker on stdout or stderr | Skip the step. Follow the `success` wire. |
 | Exit 0, `CLOCHE_RESULT:<wire>` emitted | Skip the step. Follow the named wire. |
 | Exit non-zero | Run the step normally. |
 | Timeout (90 s), signal, or crash | Treated as non-zero. Run the step normally. |
@@ -953,7 +962,7 @@ Skip scripts run **in the same location as the step itself**:
   normally — a broken gate never silently swallows work.
 - **Status**: skipped steps appear distinctly in `cloche status` and `cloche list`,
   marked as `skipped` rather than `completed` or `error`.
-- **Logs**: skip output is captured to `step.<name>.skip.log` alongside the step's
+- **Logs**: skip output is captured to `<name>.skip.log` alongside the step's
   regular log.
 
 ### What skip cannot do
