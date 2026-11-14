@@ -405,7 +405,7 @@ func (w *sagaWorld) wantAnswer(want string) error {
 func staleReferenceScan(dir string) (string, error) {
 	pat := `saga_batch_id|saga_batch_file|saga_outcome|\breframe\b`
 	cmd := exec.Command("git", "grep", "-lIE", pat, "--", ".",
-		":!docs/plans", ":!**/saga_qa_backend.feature", ":!**/saga_qa_backend_test.go")
+		":!docs/plans", ":!**/saga_qa_backend.feature", ":!**/saga_qa_backend_test.go", ":!**/stale_reference_scan_test.go")
 	cmd.Dir = dir
 	out, err := cmd.Output()
 	var ee *exec.ExitError
