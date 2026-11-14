@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -181,24 +182,26 @@ func fakeAskHelp(release <-chan struct{}) AskHelpFunc {
 	}
 }
 
-// TestMCP_ToolsCall_AskUser_OutlastsClientWindow reproduces the bug in
+// TestMCP_ToolsCall_AskUser_OutlastsClientWindow is the regression test for
 // wrapped_cloche-b79: an unanswered ask_user over /mcp that outlasts the
-// client's tool-call window (~60s in real life) is never answered with a
-// parked result inside that window. Times are scaled (window=100ms stands in
-// for 60s, park_after=400ms for 5 minutes) so no real 60s sleep occurs.
-//
-// It currently DOCUMENTS the broken behaviour: when the client gives up
-// (request ctx cancelled at the window) the handler returns a tool error
-// instead of a parked result. TODO(L2): flip these assertions — the handler
-// must emit the parked result (or keepalive/progress) before the window ends.
+// client's silence window (~60s in real life) must still end in a parked
+// result. Times are scaled (window=200ms stands in for 60s, park_after=800ms
+// for 5 minutes). The client aborts if the stream is silent for a full window,
+// like Claude's MCP client; the server keeps the stream alive with SSE
+// keepalives until fakeAskHelp reports parked=true.
 func TestMCP_ToolsCall_AskUser_OutlastsClientWindow(t *testing.T) {
-	const clientWindow = 100 * time.Millisecond // scaled "60s"
+	const clientWindow = 200 * time.Millisecond // scaled "60s"
 
-	release := make(chan struct{}) // closed when the fake clock reaches park_after
-	h, secret := setupMCPHandler(t, fakeAskHelp(release))
-	token := mcpauth.Token(secret, "run-1")
+	release := make(chan struct{}) // closed when the scaled park_after elapses
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	t.Cleanup(func() { store.Close() })
+	secret := []byte("test-secret")
+	h, err := NewHandler(store, store, WithHelpMCP(secret, fakeAskHelp(release)), WithMCPKeepalive(clientWindow/4))
+	require.NoError(t, err)
+	srv := httptest.NewServer(h)
+	defer srv.Close()
 
-	// park_after fires at 4x the client window (scaled "5 min").
 	go func() {
 		time.Sleep(4 * clientWindow)
 		close(release)
@@ -208,29 +211,70 @@ func TestMCP_ToolsCall_AskUser_OutlastsClientWindow(t *testing.T) {
 		"jsonrpc": "2.0", "id": 9, "method": "tools/call",
 		"params": map[string]any{"name": "ask_user", "arguments": map[string]any{"question": "Q?"}},
 	})
-	// The client abandons the request at the window, as Claude's MCP client does.
-	ctx, cancel := context.WithTimeout(context.Background(), clientWindow)
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	req := httptest.NewRequest("POST", "/mcp?run_id=run-1", bytes.NewReader(data)).WithContext(ctx)
-	req.Header.Set("Authorization", "Bearer "+token)
-	w := httptest.NewRecorder()
-
+	req, _ := http.NewRequestWithContext(ctx, "POST", srv.URL+"/mcp?run_id=run-1", bytes.NewReader(data))
+	req.Header.Set("Authorization", "Bearer "+mcpauth.Token(secret, "run-1"))
+	req.Header.Set("Accept", "application/json, text/event-stream")
 	start := time.Now()
-	h.ServeHTTP(w, req)
-	elapsed := time.Since(start)
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	require.Equal(t, "text/event-stream", resp.Header.Get("Content-Type"))
 
-	var resp struct {
+	// Idle-timeout client: abort if no bytes arrive for a whole window.
+	var body bytes.Buffer
+	chunks := make(chan []byte)
+	go func() {
+		defer close(chunks)
+		buf := make([]byte, 4096)
+		for {
+			n, err := resp.Body.Read(buf)
+			if n > 0 {
+				chunks <- append([]byte(nil), buf[:n]...)
+			}
+			if err != nil {
+				return
+			}
+		}
+	}()
+loop:
+	for {
+		select {
+		case c, ok := <-chunks:
+			if !ok {
+				break loop
+			}
+			body.Write(c)
+		case <-time.After(clientWindow):
+			t.Fatalf("client saw %v of silence: ask would time out before parking (body so far %q)", clientWindow, body.String())
+		}
+	}
+	assert.Greater(t, time.Since(start), 3*clientWindow, "ask must outlast the client window")
+
+	var final struct {
 		Result struct {
-			IsError bool `json:"isError"`
-			Parked  bool `json:"parked"`
+			IsError  bool   `json:"isError"`
+			Parked   bool   `json:"parked"`
+			ThreadID string `json:"threadId"`
 		} `json:"result"`
 	}
-	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	idx := strings.LastIndex(body.String(), "data: ")
+	require.GreaterOrEqual(t, idx, 0, body.String())
+	require.NoError(t, json.Unmarshal([]byte(strings.TrimSpace(body.String()[idx+6:])), &final))
+	assert.True(t, final.Result.Parked)
+	assert.False(t, final.Result.IsError)
+	assert.Equal(t, "thread-park", final.Result.ThreadID)
+}
 
-	// Desired (L2): assert.True(resp.Result.Parked) with elapsed < clientWindow.
-	// Current: the handler holds the request until the client's ctx dies and
-	// then reports an error; nothing parked is ever delivered in the window.
-	assert.GreaterOrEqual(t, elapsed, clientWindow, "handler blocks for the full client window")
-	assert.False(t, resp.Result.Parked, "BUG (b79): no parked result is delivered inside the client window")
-	assert.True(t, resp.Result.IsError, "BUG (b79): client sees an error when the window expires")
+// A client that does not accept SSE keeps getting the plain JSON response.
+func TestMCP_ToolsCall_NoSSEAccept_PlainJSON(t *testing.T) {
+	h, secret := setupMCPHandler(t, func(ctx context.Context, runID, q, title, threadID string, options []string, askKey string) (string, string, bool, error) {
+		return "ans", "t1", false, nil
+	})
+	w := mcpPost(h, "/mcp?run_id=run-1", mcpauth.Token(secret, "run-1"), map[string]any{
+		"jsonrpc": "2.0", "id": 1, "method": "tools/call",
+		"params": map[string]any{"name": "ask_user", "arguments": map[string]any{"question": "Q?"}},
+	})
+	assert.Equal(t, "application/json", w.Header().Get("Content-Type"))
 }

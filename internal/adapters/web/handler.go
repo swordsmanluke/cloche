@@ -306,6 +306,7 @@ type Handler struct {
 	mcpSecret         []byte                  // enables /mcp when non-empty; see WithHelpMCP
 	draSecret         []byte                  // enables /api/dra/... when non-empty; see WithDRAAccess
 	askHelpFn         AskHelpFunc             // handles ask_user tool calls on /mcp
+	mcpKeepalive      time.Duration           // SSE keepalive interval for blocking /mcp tool calls; 0 = default
 	history           *promptrev.HistoryCache // per-file git history cache for the ledger view
 	pages             map[string]*template.Template
 	mux               *http.ServeMux

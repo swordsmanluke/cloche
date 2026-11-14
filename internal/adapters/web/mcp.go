@@ -3,8 +3,11 @@ package web
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/swordsmanluke/cloche/internal/mcpauth"
 	"github.com/swordsmanluke/cloche/internal/version"
@@ -23,6 +26,21 @@ func WithHelpMCP(secret []byte, fn AskHelpFunc) HandlerOption {
 		h.mcpSecret = secret
 		h.askHelpFn = fn
 	}
+}
+
+// defaultMCPKeepalive is how often a blocked tools/call emits bytes on its SSE
+// stream. It must stay well under the ~60s window after which Claude's MCP
+// client gave up on a silent HTTP request (wrapped_cloche-b79).
+const defaultMCPKeepalive = 15 * time.Second
+
+// WithMCPKeepalive overrides the SSE keepalive interval for blocking /mcp
+// tool calls (tests use a short interval).
+func WithMCPKeepalive(d time.Duration) HandlerOption {
+	return func(h *Handler) { h.mcpKeepalive = d }
+}
+
+func acceptsSSE(r *http.Request) bool {
+	return strings.Contains(r.Header.Get("Accept"), "text/event-stream")
 }
 
 func bearerToken(r *http.Request) string {
@@ -115,9 +133,93 @@ func (h *Handler) handleMCP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if req.Method == "tools/call" && acceptsSSE(r) {
+		if flusher, ok := w.(http.Flusher); ok {
+			h.serveMCPToolCallSSE(w, flusher, r.Context(), runID, req)
+			return
+		}
+	}
+
 	resp := h.dispatchMCP(r.Context(), runID, req)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(resp)
+}
+
+// serveMCPToolCallSSE answers a (possibly long-blocking) tools/call as an SSE
+// stream (Streamable HTTP). While the tool runs it emits an SSE comment — and
+// a notifications/progress message when the client supplied a progressToken —
+// every keepalive interval, so the client never sees a silent connection. The
+// final JSON-RPC response is sent as a single "message" event. The ask itself
+// still ends via the router's park_after, so parking and resume are unchanged.
+func (h *Handler) serveMCPToolCallSSE(w http.ResponseWriter, flusher http.Flusher, ctx context.Context, runID string, req mcpRequest) {
+	interval := h.mcpKeepalive
+	if interval <= 0 {
+		interval = defaultMCPKeepalive
+	}
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("X-Accel-Buffering", "no")
+	w.WriteHeader(http.StatusOK)
+	// A failed write means the client is gone; stop streaming (the request ctx
+	// cancels dispatchMCP, and done is buffered so the goroutine cannot leak).
+	if _, err := io.WriteString(w, ": ok\n\n"); err != nil {
+		return
+	}
+	flusher.Flush()
+
+	var meta struct {
+		Meta struct {
+			ProgressToken json.RawMessage `json:"progressToken"`
+		} `json:"_meta"`
+	}
+	// Params without a _meta/progressToken (or malformed ones) just mean no
+	// progress notifications; dispatchMCP reports bad params itself.
+	_ = json.Unmarshal(req.Params, &meta)
+
+	done := make(chan mcpResponse, 1)
+	go func() { done <- h.dispatchMCP(ctx, runID, req) }()
+
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	var tick float64
+	for {
+		select {
+		case resp := <-done:
+			// Final event: if the write fails the client is gone and there is no one left to tell.
+			_ = writeSSEMessage(w, flusher, resp)
+			return
+		case <-ticker.C:
+			tick++
+			var err error
+			if len(meta.Meta.ProgressToken) > 0 {
+				err = writeSSEMessage(w, flusher, map[string]any{
+					"jsonrpc": "2.0", "method": "notifications/progress",
+					"params": map[string]any{"progressToken": meta.Meta.ProgressToken, "progress": tick, "message": "waiting for a human reply"},
+				})
+			} else {
+				_, err = io.WriteString(w, ": keepalive\n\n")
+				if err == nil {
+					flusher.Flush()
+				}
+			}
+			if err != nil {
+				return
+			}
+		}
+	}
+}
+
+// writeSSEMessage writes v as a single JSON "message" SSE event and flushes.
+func writeSSEMessage(w http.ResponseWriter, flusher http.Flusher, v any) error {
+	data, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(w, "event: message\ndata: %s\n\n", data); err != nil {
+		return err
+	}
+	flusher.Flush()
+	return nil
 }
 
 func (h *Handler) dispatchMCP(ctx context.Context, runID string, req mcpRequest) mcpResponse {
