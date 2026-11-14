@@ -627,7 +627,7 @@ func (a *Adapter) maybeRecoverMissingMarker(ctx context.Context, command, workDi
 	}
 
 	sessionID := findSessionID(rawStdout)
-	recResult, recRaw, recUsage, found := a.runRecoveryTurn(ctx, command, workDir, stepName, nonce, sessionID)
+	recResult, recRaw, recUsage, found := a.runRecoveryTurn(ctx, command, workDir, stepName, nonce, sessionID, fakeDeclaredResults())
 	combined := append(append([]byte{}, rawStdout...), recRaw...)
 	if !found {
 		return result, combined, usage, fallbackErr
@@ -638,9 +638,22 @@ func (a *Adapter) maybeRecoverMissingMarker(ctx context.Context, command, workDi
 	return recResult, combined, usage, nil
 }
 
+// fakeDeclaredResults is a MOCK standing in for the step's declared result
+// names until the real step-config plumbing reaches maybeRecoverMissingMarker.
+// TODO(wrapped_cloche-zkd): replace with step.Results threaded from Execute.
+func fakeDeclaredResults() []string {
+	return []string{"success", "fail"}
+}
+
 // recoveryPrompt is the minimal follow-up prompt issued by runRecoveryTurn.
-func recoveryPrompt(nonce string) string {
-	return fmt.Sprintf("Print exactly one result marker line now: %s%s:<result-name>. Nothing else.", protocol.ResultPrefix, nonce)
+// results are the step's declared result names; they are listed as the only
+// valid choices.
+func recoveryPrompt(nonce string, results []string) string {
+	p := fmt.Sprintf("Print exactly one result marker line now: %s%s:<result-name>.", protocol.ResultPrefix, nonce)
+	if len(results) > 0 {
+		p += fmt.Sprintf(" The only valid result names are: %s. No other result name is valid.", strings.Join(results, ", "))
+	}
+	return p + " Nothing else."
 }
 
 // runRecoveryTurn issues the single follow-up invocation for a missing
@@ -650,7 +663,7 @@ func recoveryPrompt(nonce string) string {
 // uses for park+resume. The caller (maybeRecoverMissingMarker) is what caps
 // this to exactly one call per step invocation; this function itself never
 // recurses.
-func (a *Adapter) runRecoveryTurn(ctx context.Context, command, workDir, stepName, nonce, sessionID string) (result string, rawOutput []byte, usage *domain.TokenUsage, found bool) {
+func (a *Adapter) runRecoveryTurn(ctx context.Context, command, workDir, stepName, nonce, sessionID string, results []string) (result string, rawOutput []byte, usage *domain.TokenUsage, found bool) {
 	if a.StatusWriter != nil {
 		a.StatusWriter.Log(stepName, "no CLOCHE_RESULT marker found; issuing one recovery turn")
 	} else {
@@ -667,7 +680,7 @@ func (a *Adapter) runRecoveryTurn(ctx context.Context, command, workDir, stepNam
 
 	cmd := exec.CommandContext(ctx, command, args...)
 	cmd.Dir = workDir
-	cmd.Stdin = strings.NewReader(recoveryPrompt(nonce))
+	cmd.Stdin = strings.NewReader(recoveryPrompt(nonce, results))
 	cmd.Env = append(os.Environ(), "CLOCHE_RESULT_NONCE="+nonce)
 	if len(a.ExtraEnv) > 0 {
 		cmd.Env = append(cmd.Env, a.ExtraEnv...)
