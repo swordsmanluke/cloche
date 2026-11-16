@@ -149,8 +149,10 @@ are refused (`questions guide` and `dra list|wake|heartbeat` included).
 **Ready (ruling CLOCHE-A160).** A DRA may mark any task in its own domain `ready`,
 on create and on update; a person need not promote it. The daily budget cap is the
 only limit: a ready task is picked up by the loop like any other, and the loop
-does not start runs once the cap is spent. A task of another domain, or one with
-no domain label, is still refused, and the error names the DRA's domain.
+does not start runs once the cap is spent. Marking `ready` on a task of another domain, a
+missing task, or one without the DRA's domain label is refused (403) and the error
+names the DRA's domain; an update may add the domain label and `ready` together to
+an unclaimed task.
 
 **Known gap:** the daemon's gRPC port is unauthenticated today (that is how
 `clo` and `cloche-agent` work), so refusing `stop`/`delete`/`shutdown` over gRPC
