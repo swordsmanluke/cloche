@@ -154,9 +154,22 @@ func TestDRA_CreateAlwaysCarriesDomainLabel(t *testing.T) {
 	assert.Equal(t, []string{"auth"}, e.tracker.labels[outputs(t, rec)["new_task_id"]])
 }
 
-func TestDRA_CreateCannotSetReadyOrUnknownInputs(t *testing.T) {
+func TestDRA_CreateReadyNeedsOwnDomain(t *testing.T) {
 	e := setupDRA(t)
-	assert.Equal(t, http.StatusForbidden, e.post("/api/dra/tasks/create", `{"inputs":{"title":"x","labels":"ready"}}`).Code)
+	for _, labels := range []string{"ready", "billing,ready"} {
+		rec := e.post("/api/dra/tasks/create", fmt.Sprintf(`{"inputs":{"title":"x","labels":%q}}`, labels))
+		assert.Equal(t, http.StatusForbidden, rec.Code, labels)
+		assert.Contains(t, rec.Body.String(), "auth", labels)
+	}
+	assert.Empty(t, e.tracker.calls)
+
+	rec := e.post("/api/dra/tasks/create", `{"inputs":{"title":"x","labels":"auth,ready"}}`)
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	assert.ElementsMatch(t, []string{"auth", "ready"}, e.tracker.labels[outputs(t, rec)["new_task_id"]])
+}
+
+func TestDRA_CreateRejectsUnknownInputs(t *testing.T) {
+	e := setupDRA(t)
 	assert.Equal(t, http.StatusBadRequest, e.post("/api/dra/tasks/create", `{"inputs":{"title":"x","target_task_id":"other-1"}}`).Code)
 	assert.Empty(t, e.tracker.calls)
 }
@@ -187,13 +200,31 @@ func TestDRA_CannotTouchAnotherDomainsTask(t *testing.T) {
 
 func TestDRA_UpdateLabelRules(t *testing.T) {
 	e := setupDRA(t)
-	rec := e.post("/api/dra/tasks/update", `{"inputs":{"action":"update","target_task_id":"mine-1","add_labels":"ready"}}`)
-	assert.Equal(t, http.StatusForbidden, rec.Code)
-	rec = e.post("/api/dra/tasks/update", `{"inputs":{"action":"update","target_task_id":"mine-1","remove_labels":"auth"}}`)
+	rec := e.post("/api/dra/tasks/update", `{"inputs":{"action":"update","target_task_id":"mine-1","remove_labels":"auth"}}`)
 	assert.Equal(t, http.StatusForbidden, rec.Code)
 	rec = e.post("/api/dra/tasks/update", `{"inputs":{"action":"update","comment":"x"}}`)
 	assert.Equal(t, http.StatusBadRequest, rec.Code)
 	assert.NotContains(t, e.tracker.calls, "update-task:update")
+}
+
+func TestDRA_UpdateReadyNeedsOwnDomain(t *testing.T) {
+	e := setupDRA(t)
+	for _, id := range []string{"other-1", "bare-1", "missing-1"} {
+		rec := e.post("/api/dra/tasks/update", fmt.Sprintf(`{"inputs":{"action":"update","target_task_id":%q,"add_labels":"ready"}}`, id))
+		assert.Equal(t, http.StatusForbidden, rec.Code, id)
+		assert.Contains(t, rec.Body.String(), "auth", id)
+	}
+	assert.NotContains(t, e.tracker.calls, "update-task:update")
+
+	rec := e.post("/api/dra/tasks/update", `{"inputs":{"action":"update","target_task_id":"mine-1","add_labels":"ready"}}`)
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+
+	// Adding the domain label and ready together adopts a bare task, but
+	// not one that is missing.
+	rec = e.post("/api/dra/tasks/update", `{"inputs":{"action":"update","target_task_id":"bare-1","add_labels":"auth,ready"}}`)
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	rec = e.post("/api/dra/tasks/update", `{"inputs":{"action":"update","target_task_id":"missing-1","add_labels":"auth,ready"}}`)
+	assert.Equal(t, http.StatusForbidden, rec.Code)
 }
 
 func TestDRA_CloseOwnTask(t *testing.T) {

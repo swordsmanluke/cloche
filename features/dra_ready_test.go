@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync/atomic"
+	"time"
 
 	"github.com/cucumber/godog"
 
@@ -17,6 +19,7 @@ import (
 	"github.com/swordsmanluke/cloche/internal/adapters/web"
 	"github.com/swordsmanluke/cloche/internal/domain"
 	"github.com/swordsmanluke/cloche/internal/draauth"
+	"github.com/swordsmanluke/cloche/internal/host"
 )
 
 func init() { registerScenarios(initDRAReadyScenarios) }
@@ -94,21 +97,11 @@ type draReadyWorld struct {
 	code    int
 	body    string
 	docs    string
+	store   *sqlite.Store
+	capped  bool
 }
 
 type draReadyKey struct{}
-
-// legacyReadyRefusal is the message today's API gives for any ready label.
-const legacyReadyRefusal = "a DRA cannot mark a task 'ready'"
-
-// pendingL2 marks an outcome that depends on the API change (L2): while the
-// API still refuses ready outright, the step is pending rather than failing.
-func (w *draReadyWorld) pendingL2() error {
-	if strings.Contains(w.body, legacyReadyRefusal) {
-		return godog.ErrPending // pending: L2
-	}
-	return nil
-}
 
 func (w *draReadyWorld) post(path string, inputs map[string]string) {
 	// Marshalling a map of strings cannot fail.
@@ -157,6 +150,7 @@ func initDRAReadyScenarios(ctx *godog.ScenarioContext) {
 		if err != nil {
 			return err
 		}
+		w.store = store
 		secret := []byte("dra-ready-secret")
 		run := domain.NewRun("wake-1", "dra-wake-"+domainName)
 		run.ProjectDir = draReadyProject
@@ -181,9 +175,13 @@ func initDRAReadyScenarios(ctx *godog.ScenarioContext) {
 		W(cx).seed()
 		return nil
 	})
-	// The cap itself is existing loop behaviour; this feature changes nothing
-	// there. Recorded here, asserted in the L2 outcome step below.
-	ctx.Step(`^the daily budget cap is exceeded$`, func() error { return nil })
+	// The cap itself is existing loop behaviour (Loop.SetLaunchGate); this
+	// feature changes nothing there. Recorded here, asserted in the
+	// "loop does not start a run" step below.
+	ctx.Step(`^the daily budget cap is exceeded$`, func(cx context.Context) error {
+		W(cx).capped = true
+		return nil
+	})
 
 	// Actions.
 	ctx.Step(`^the DRA creates a task labelled "([^"]*)" and "([^"]*)"$`, func(cx context.Context, a, b string) error {
@@ -204,12 +202,8 @@ func initDRAReadyScenarios(ctx *godog.ScenarioContext) {
 		return nil
 	})
 
-	// Outcomes. Success outcomes are pending: L2 while the API still refuses
-	// ready; once L2 lands they assert for real.
+	// Outcomes.
 	succeeded := func(w *draReadyWorld, what string) error {
-		if err := w.pendingL2(); err != nil {
-			return err
-		}
 		if w.code != http.StatusOK {
 			return fmt.Errorf("%s: want 200, got %d: %s", what, w.code, w.body)
 		}
@@ -225,9 +219,6 @@ func initDRAReadyScenarios(ctx *godog.ScenarioContext) {
 	})
 	ctx.Step(`^the error names the domain "([^"]*)"$`, func(cx context.Context, d string) error {
 		w := W(cx)
-		if err := w.pendingL2(); err != nil {
-			return err
-		}
 		if !strings.Contains(w.body, d) {
 			return fmt.Errorf("error does not name domain %q: %s", d, w.body)
 		}
@@ -241,9 +232,6 @@ func initDRAReadyScenarios(ctx *godog.ScenarioContext) {
 	})
 	ctx.Step(`^the task carries the "([^"]*)" label$`, func(cx context.Context, l string) error {
 		w := W(cx)
-		if err := w.pendingL2(); err != nil {
-			return err
-		}
 		if !w.tracker.has(w.taskID, l) {
 			return fmt.Errorf("task %q labels %v lack %q", w.taskID, w.tracker.labels[w.taskID], l)
 		}
@@ -256,8 +244,28 @@ func initDRAReadyScenarios(ctx *godog.ScenarioContext) {
 		}
 		return nil
 	})
-	ctx.Step(`^the loop does not start a run for the task$`, func() error {
-		return godog.ErrPending // pending: L2
+	ctx.Step(`^the loop does not start a run for the task$`, func(cx context.Context) error {
+		w := W(cx)
+		if !w.capped {
+			return fmt.Errorf("scenario did not set the budget cap")
+		}
+		var launched atomic.Int32
+		loop := host.NewPhaseLoop(host.LoopConfig{ProjectDir: draReadyProject, MaxConcurrent: 1, DedupTimeout: time.Second}, w.store,
+			func(context.Context, string) ([]host.Task, error) {
+				return []host.Task{{ID: w.taskID, Status: "open", Labels: w.tracker.labels[w.taskID]}}, nil
+			},
+			func(context.Context, string, string, string, string) (*host.RunResult, error) {
+				launched.Add(1)
+				return &host.RunResult{State: domain.RunStateSucceeded}, nil
+			})
+		loop.SetLaunchGate(func() bool { return true })
+		loop.Start()
+		defer loop.Stop()
+		time.Sleep(300 * time.Millisecond)
+		if n := launched.Load(); n != 0 {
+			return fmt.Errorf("loop launched %d run(s) while the cap was exceeded", n)
+		}
+		return nil
 	})
 
 	// Docs scenario.

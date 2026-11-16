@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/swordsmanluke/cloche/internal/domain"
+	"github.com/swordsmanluke/cloche/internal/dra"
 	"github.com/swordsmanluke/cloche/internal/draauth"
 	"github.com/swordsmanluke/cloche/internal/signal"
 )
@@ -236,8 +237,8 @@ func (h *Handler) draCreateTask(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	labels := splitLabels(in["labels"])
-	if hasLabel(labels, ReadyLabel) {
-		draError(w, http.StatusForbidden, "a DRA cannot mark a task 'ready'; a person promotes it to the loop")
+	if hasLabel(labels, ReadyLabel) && !hasLabel(labels, c.DRA) {
+		draError(w, http.StatusForbidden, draReadyRefusal(c))
 		return
 	}
 	if !hasLabel(labels, c.DRA) {
@@ -304,15 +305,37 @@ func (h *Handler) draUpdateTask(w http.ResponseWriter, r *http.Request) {
 		draError(w, http.StatusBadRequest, "target_task_id is required")
 		return
 	}
-	if hasLabel(splitLabels(in["add_labels"]), ReadyLabel) {
-		draError(w, http.StatusForbidden, "a DRA cannot mark a task 'ready'; a person promotes it to the loop")
-		return
-	}
+	addLabels := splitLabels(in["add_labels"])
+	addsReady := hasLabel(addLabels, ReadyLabel)
 	if hasLabel(splitLabels(in["remove_labels"]), c.DRA) {
 		draError(w, http.StatusForbidden, "a DRA cannot remove its own domain label from a task")
 		return
 	}
-	if !h.draCheckOwner(w, r, runner, c, id) {
+	if addsReady {
+		// Ready is allowed on a task that carries this DRA's domain label,
+		// or that gets it in the same update (ruling CLOCHE-A160).
+		own, err := h.draOwns(r.Context(), runner, c, id)
+		if err != nil {
+			draError(w, http.StatusInternalServerError, fmt.Sprintf("checking task %s: %v", id, err))
+			return
+		}
+		if !own && !hasLabel(addLabels, c.DRA) {
+			draError(w, http.StatusForbidden, draReadyRefusal(c))
+			return
+		}
+		if !own {
+			// Adopting a task: only one that exists and is not another domain's.
+			taken, err := h.draTaskOfOtherDomain(r.Context(), runner, c, id)
+			if err != nil {
+				draError(w, http.StatusInternalServerError, fmt.Sprintf("checking task %s: %v", id, err))
+				return
+			}
+			if taken {
+				draError(w, http.StatusForbidden, draReadyRefusal(c))
+				return
+			}
+		}
+	} else if !h.draCheckOwner(w, r, runner, c, id) {
 		return
 	}
 	out, err := runner.RunTrackerPhase(r.Context(), c.Project, "update-task", in)
@@ -321,6 +344,30 @@ func (h *Handler) draUpdateTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSONStatus(w, http.StatusOK, apiTrackerPhaseResponse{Outputs: out})
+}
+
+func draReadyRefusal(c draauth.Claims) string {
+	return fmt.Sprintf("a DRA may mark 'ready' only tasks in its own domain; the task must carry the domain label %q", c.DRA)
+}
+
+// draTaskOfOtherDomain reports whether the task is missing or carries the
+// domain label of another DRA of the project.
+func (h *Handler) draTaskOfOtherDomain(ctx context.Context, runner TrackerPhaseRunner, c draauth.Claims, id string) (bool, error) {
+	out, err := runner.RunTrackerPhase(ctx, c.Project, "update-task", map[string]string{
+		"action": "get", "target_task_id": id,
+	})
+	if err != nil {
+		return false, err
+	}
+	if out["task_found"] != "true" {
+		return true, nil
+	}
+	for _, l := range splitLabels(out["task_labels"]) {
+		if _, err := dra.Find(c.Project, l); err == nil {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // draCheckOwner refuses (403) a task that is missing or lacks the DRA's label.
