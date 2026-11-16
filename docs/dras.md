@@ -146,10 +146,11 @@ Inside the container `cloche tasks [create|update|find|close]`, `cloche list`,
 ask|await|read` and `cloche dra wait|waits` use the credential; other commands
 are refused (`questions guide` and `dra list|wake|heartbeat` included).
 
-**Open question (needs a ruling; not guessed):** does a DRA-created task get the
-`ready` label by itself? `ready` hands a task to the loop, which spends budget.
-Until decided, a DRA **cannot** set `ready` (on create or update); a person
-promotes the task.
+**Ready (ruling CLOCHE-A160).** A DRA may mark any task in its own domain `ready`,
+on create and on update; a person need not promote it. The daily budget cap is the
+only limit: a ready task is picked up by the loop like any other, and the loop
+does not start runs once the cap is spent. A task of another domain, or one with
+no domain label, is still refused, and the error names the DRA's domain.
 
 **Known gap:** the daemon's gRPC port is unauthenticated today (that is how
 `clo` and `cloche-agent` work), so refusing `stop`/`delete`/`shutdown` over gRPC
