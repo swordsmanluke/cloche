@@ -54,7 +54,10 @@ test('every step is a clickable node and every wire is drawn once per pair', () 
     for (const s of wf.steps) assert.match(html, new RegExp('data-step="' + s.name + '"'));
     assert.match(html, /changes requested/);
     assert.doesNotMatch(html, /timeout/); // implicit wires are hidden
-    assert.match(html, /agent step: an LLM does the work/);
+    assert.match(html, /dag-legend-item[^>]*><span[^>]*><\/span>prompt step</);
+    assert.match(html, /<\/span>script step</);
+    assert.match(html, /<\/span>poll step</);
+    assert.doesNotMatch(html, /an LLM does the work/);
 });
 
 test('single step with no wires still renders', () => {

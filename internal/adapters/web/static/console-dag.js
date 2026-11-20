@@ -15,11 +15,12 @@
 }(typeof self !== 'undefined' ? self : this, function () {
     'use strict';
 
+    // Legend text; details live in the docs. Agent steps are prompt-driven.
     var TYPE_DESC = {
-        agent: 'agent step: an LLM does the work',
-        script: 'script step: a command decides',
-        poll: 'poll step: waits for a person or a system',
-        workflow: 'workflow step: runs another workflow'
+        agent: 'prompt step',
+        script: 'script step',
+        poll: 'poll step',
+        workflow: 'workflow'
     };
 
     function isSuccess(r) { return r === 'success' || r === 'ok' || r === 'done' || r === 'pass'; }
