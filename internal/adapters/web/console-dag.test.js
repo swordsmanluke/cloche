@@ -208,3 +208,38 @@ test('odd shapes: self-loop, two-step cycle, long names, parallel results', () =
     const g = geometry(r.html);
     assert.ok(g.rects.every((x) => x.x + x.w <= g.W));
 });
+
+// An edge must never run behind a node that is not one of its own endpoints
+// (it would read as that node's edge).
+function edgesAndNodes(html) {
+    const num = (s, k) => parseFloat(new RegExp('(?<![a-z])' + k + '="([-0-9.]+)"').exec(s)[1]);
+    const nodes = [...html.matchAll(/<g class="dag-(?:node|pill)[^>]*data-node="([^"]*)"[^>]*><rect[^>]*>/g)].map((m) => ({
+        id: m[1], x: num(m[0].slice(m[0].indexOf('<rect')), 'x'), y: num(m[0].slice(m[0].indexOf('<rect')), 'y'),
+        w: num(m[0].slice(m[0].indexOf('<rect')), 'width'), h: num(m[0].slice(m[0].indexOf('<rect')), 'height')
+    }));
+    const edges = [...html.matchAll(/<path class="dag-edge" data-from="([^"]*)" data-to="([^"]*)"[^>]* d="([^"]*)"/g)].map((m) => ({
+        from: m[1], to: m[2],
+        pts: [...m[3].matchAll(/[ML]([-0-9.]+) ([-0-9.]+)/g)].map((p) => [+p[1], +p[2]])
+    }));
+    return { nodes, edges };
+}
+
+for (const w of real.filter((x) => x.steps.length > 1)) {
+    test('no edge runs behind a node it does not touch: ' + w.name, () => {
+        const L = Dag.layout(w);
+        for (const vertical of [false, true]) {
+            const { nodes, edges } = edgesAndNodes(Dag.svg(L, vertical).svg);
+            for (const e of edges) {
+                for (const n of nodes) {
+                    if (n.id === e.from || n.id === e.to) continue;
+                    for (let i = 0; i < e.pts.length - 1; i++) {
+                        const [x0, y0] = e.pts[i], [x1, y1] = e.pts[i + 1];
+                        const hit = Math.min(x0, x1) < n.x + n.w - 1 && Math.max(x0, x1) > n.x + 1 &&
+                            Math.min(y0, y1) < n.y + n.h - 1 && Math.max(y0, y1) > n.y + 1;
+                        assert.ok(!hit, (vertical ? 'vertical' : 'horizontal') + ': ' + e.from + ' -> ' + e.to + ' runs behind ' + n.id);
+                    }
+                }
+            }
+        }
+    });
+}

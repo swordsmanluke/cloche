@@ -178,6 +178,9 @@
         return { nodes: nodes, order: order, edges: all, cols: maxCol - minCol + 1, lanes: maxLane + 1, types: types, wfName: wf.name };
     }
 
+    // Stable DOM id for a node; the synthetic start pill can't collide with a step name.
+    function domId(id) { return id === '\u0000start' ? '@start' : id; }
+
     var STEP_H = 54, PILL_W = 84, PILL_H = 34, PAD = 24;
 
     // svg draws a layout; returns { svg, w, h } (pixel size of the drawing).
@@ -223,6 +226,26 @@
         var has = {};
         L.edges.forEach(function (e) { has[e.from + '\u0000' + e.to] = true; });
 
+        // Is another node in target's lane between source's column and target's
+        // (the direct elbow would run behind it)?
+        var cell = {};
+        L.order.forEach(function (id) { cell[L.nodes[id].lane + ',' + L.nodes[id].col] = id; });
+        function blocked(a, b) {
+            var lo = Math.min(a.col, b.col), hi = Math.max(a.col, b.col);
+            for (var c = lo; c <= hi; c++) if (c !== b.col && cell[b.lane + ',' + c]) return true;
+            return false;
+        }
+        // Going back toward the spine: the direct elbow runs along the source's
+        // own lane to the target's column, so a node there is in the way.
+        function blockedUp(a, b) {
+            var lo = Math.min(a.col, b.col), hi = Math.max(a.col, b.col);
+            for (var c = lo; c <= hi; c++) if (c !== a.col && cell[a.lane + ',' + c]) return true;
+            return false;
+        }
+        function columnBlocked(a, b) {
+            for (var l = Math.min(a.lane, b.lane) + 1; l < Math.max(a.lane, b.lane); l++) if (cell[l + ',' + a.col]) return true;
+            return false;
+        }
         var obstacles = L.order.map(function (id) {
             var i = info[id], c = pt(i.m, i.c);
             return [c[0] - i.w / 2 - 2, c[1] - i.h / 2 - 2, c[0] + i.w / 2 + 2, c[1] + i.h / 2 + 2];
@@ -240,18 +263,30 @@
             } else if (dl === 0) {
                 var cd = a.c + a.hc + 18 + 10 * detours++;
                 pts = [[a.m, a.c + a.hc], [a.m, cd], [b.m, cd], [b.m, b.c + b.hc]];
+            } else if (dc === 0 && Math.abs(dl) > 1 && columnBlocked(a.n, b.n)) {
+                // Stacked nodes between them: go round the right-hand side of the column.
+                var gx = a.m + a.hm + 16;
+                pts = [[a.m + a.hm, a.c], [gx, a.c], [gx, b.c], [b.m + b.hm, b.c]];
             } else if (dc === 0) {
                 sign = paired ? (dl > 0 ? -1 : 1) : 0;
                 var o2 = sign * 10, s2 = dl > 0 ? 1 : -1;
                 pts = [[a.m + o2, a.c + s2 * a.hc], [b.m + o2, b.c - s2 * b.hc]];
+            } else if (dl > 0 && blocked(a.n, b.n)) {
+                // A node sits in the way: run along the empty gap between lanes
+                // instead (shared by every edge taking this route) and drop in.
+                var gc = a.c + a.hc + 20;
+                pts = [[a.m, a.c + a.hc], [a.m, gc], [b.m, gc], [b.m, b.c - b.hc]];
             } else if (dl > 0) {
                 pts = [[a.m, a.c + a.hc], [a.m, b.c], [b.m + (dc < 0 ? b.hm : -b.hm), b.c]];
+            } else if (blockedUp(a.n, b.n)) {
+                var gu = a.c - a.hc - 20;
+                pts = [[a.m, a.c - a.hc], [a.m, gu], [b.m, gu], [b.m, b.c + b.hc]];
             } else {
                 pts = [[a.m + (dc > 0 ? a.hm : -a.hm), a.c], [b.m, a.c], [b.m, b.c + b.hc]];
             }
             var sp = pts.map(function (p) { return pt(p[0], p[1]); });
             sp.forEach(function (p) { grow(p[0], p[1]); });
-            out += '<path class="dag-edge" marker-end="url(#dag-arrow)" d="' +
+            out += '<path class="dag-edge" data-from="' + esc(domId(e.from)) + '" data-to="' + esc(domId(e.to)) + '" marker-end="url(#dag-arrow)" d="' +
                 sp.map(function (p, i) { return (i ? 'L' : 'M') + p[0] + ' ' + p[1]; }).join(' ') + '"/>';
 
             var text = label(e);
@@ -290,7 +325,7 @@
             })[0] || spots[0];
             obstacles.push(spot.box);
             grow(spot.box[2], spot.box[3]);
-            out += '<text class="dag-edge-label" text-anchor="' + spot.anchor + '" x="' + spot.x + '" y="' + spot.y + '">' + esc(text) + '</text>';
+            out += '<text class="dag-edge-label" data-from="' + esc(domId(e.from)) + '" data-to="' + esc(domId(e.to)) + '" text-anchor="' + spot.anchor + '" x="' + spot.x + '" y="' + spot.y + '">' + esc(text) + '</text>';
         });
 
         L.order.forEach(function (id) {
@@ -299,11 +334,11 @@
             var x = c[0] - i.w / 2, y = c[1] - i.h / 2;
             grow(x + i.w, y + i.h);
             if (i.n.pill) {
-                out += '<g class="dag-pill dag-pill-' + esc(i.n.pill) + '"><rect class="dag-node-rect" rx="' + i.h / 2 + '" x="' + x + '" y="' + y + '" width="' + i.w + '" height="' + i.h + '"/>' +
+                out += '<g class="dag-pill dag-pill-' + esc(i.n.pill) + '" data-node="' + esc(domId(id)) + '"><rect class="dag-node-rect" rx="' + i.h / 2 + '" x="' + x + '" y="' + y + '" width="' + i.w + '" height="' + i.h + '"/>' +
                     '<text class="dag-node-text" text-anchor="middle" x="' + c[0] + '" y="' + (c[1] + 4) + '">' + esc(i.n.pill) + '</text></g>';
             } else {
                 var s = i.n.step;
-                out += '<g class="dag-node" data-workflow="' + esc(L.wfName) + '" data-step="' + esc(s.name) + '">' +
+                out += '<g class="dag-node" data-node="' + esc(s.name) + '" data-workflow="' + esc(L.wfName) + '" data-step="' + esc(s.name) + '">' +
                     '<rect class="dag-node-rect dag-type-' + esc(s.type) + '" rx="8" x="' + x + '" y="' + y + '" width="' + i.w + '" height="' + i.h + '"/>' +
                     '<text class="dag-node-text" text-anchor="middle" x="' + c[0] + '" y="' + (c[1] - 3) + '">' + esc(s.name) + '</text>' +
                     '<text class="dag-node-sub" text-anchor="middle" x="' + c[0] + '" y="' + (c[1] + 14) + '">' + esc(s.type) + '</text></g>';
@@ -312,7 +347,7 @@
 
         var w = maxX + PAD, h = maxY + PAD;
         var head = '<svg class="dag-svg" width="' + w + '" height="' + h + '"><defs>' +
-            '<marker id="dag-arrow" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><polygon class="dag-arrow" points="0 0, 8 3, 0 6"/></marker></defs>';
+            '<marker id="dag-arrow" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><polygon class="dag-arrow" fill="context-stroke" points="0 0, 8 3, 0 6"/></marker></defs>';
         return { svg: head + out + '</svg>', w: w, h: h };
     }
 
@@ -333,5 +368,23 @@
         return { html: r.svg + legend(L), vertical: vertical };
     }
 
-    return { layout: layout, svg: svg, render: render };
+    // highlight marks the edges leaving each named step (and the nodes they
+    // reach) inside `root`, dimming the rest; an empty list clears it.
+    function highlight(root, names) {
+        var on = {}, dest = {};
+        names.forEach(function (n) { if (n) on[n] = true; });
+        root.classList.toggle('dag-focus', Object.keys(on).length > 0);
+        Array.prototype.forEach.call(root.querySelectorAll('[data-from]'), function (el) {
+            var hot = !!on[el.getAttribute('data-from')];
+            el.classList.toggle('dag-hot', hot);
+            if (hot) dest[el.getAttribute('data-to')] = true;
+        });
+        Array.prototype.forEach.call(root.querySelectorAll('[data-node]'), function (el) {
+            var id = el.getAttribute('data-node');
+            el.classList.toggle('dag-sel', !!on[id]);
+            el.classList.toggle('dag-dest', !!dest[id] && !on[id]);
+        });
+    }
+
+    return { layout: layout, svg: svg, render: render, highlight: highlight };
 }));

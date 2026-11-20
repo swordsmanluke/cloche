@@ -3746,6 +3746,8 @@
 
     function closeStepDrawer() {
         document.getElementById('step-drawer').classList.remove('drawer-open');
+        dagSelected = null;
+        applyDagHighlight();
     }
 
     function closeIntentDrawer() {
@@ -3846,6 +3848,8 @@
         document.getElementById('location-tabs').addEventListener('click', onLocationTabsClick);
         document.getElementById('workflow-tabs').addEventListener('click', onWorkflowTabsClick);
         document.getElementById('workflow-dag').addEventListener('click', onDagClick);
+        document.getElementById('workflow-dag').addEventListener('mouseover', onDagHover);
+        document.getElementById('workflow-dag').addEventListener('mouseleave', function () { dagHover = null; applyDagHighlight(); });
         loadWorkflows();
     }
 
@@ -3861,7 +3865,24 @@
 
     function onDagClick(e) {
         var node = e.target.closest('[data-step]');
+        dagSelected = node ? node.getAttribute('data-step') : null;
+        applyDagHighlight();
         if (node) openStepDrawer(node.getAttribute('data-workflow'), node.getAttribute('data-step'));
+    }
+
+    // Hovering a step lights up its outgoing edges; clicking one keeps them lit
+    // (while its drawer is open) so you can read where it goes.
+    function onDagHover(e) {
+        var node = e.target.closest('.dag-node');
+        var name = node ? node.getAttribute('data-step') : null;
+        if (name === dagHover) return;
+        dagHover = name;
+        applyDagHighlight();
+    }
+
+    function applyDagHighlight() {
+        var dagEl = document.getElementById('workflow-dag');
+        if (dagEl) ConsoleDag.highlight(dagEl, [dagHover, dagSelected]);
     }
 
     function loadWorkflows() {
@@ -3976,11 +3997,12 @@
             return;
         }
 
+        if (dagCurrentWf !== wf) { dagSelected = null; dagHover = null; }
         dagCurrentWf = wf;
         renderDag();
     }
 
-    var dagCurrentWf = null, dagVertical = null, dagResizeTimer = null;
+    var dagCurrentWf = null, dagVertical = null, dagResizeTimer = null, dagHover = null, dagSelected = null;
 
     function renderDag() {
         var dagEl = document.getElementById('workflow-dag');
@@ -3988,6 +4010,7 @@
         var r = ConsoleDag.render(dagCurrentWf, dagEl.clientWidth);
         dagVertical = r.vertical;
         dagEl.innerHTML = r.html;
+        applyDagHighlight();
     }
 
     // Re-pick the orientation when the pane is resized across the fit threshold.

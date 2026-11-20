@@ -447,7 +447,14 @@ h2 {
 .dag-node-sub { font-family: var(--font); font-size: var(--fs-xs); fill: var(--tx2); }
 
 .dag-edge { fill: none; stroke: var(--dag-edge); stroke-width: 1.5; }
-.dag-arrow { fill: var(--dag-edge); }
+.dag-arrow { fill: var(--dag-edge); fill: context-stroke; } /* arrowheads follow their edge's colour; first fill is the fallback */
+
+/* Hover / selected step: its outgoing edges light up, everything else dims. */
+.dag-focus .dag-edge:not(.dag-hot), .dag-focus .dag-edge-label:not(.dag-hot) { opacity: 0.25; }
+.dag-edge.dag-hot { stroke: var(--ac); stroke-width: 2.5; }
+.dag-edge-label.dag-hot { fill: var(--ac); }
+.dag-sel .dag-node-rect, .dag-dest .dag-node-rect { stroke: var(--ac); stroke-width: 2.5; }
+.dag-dest .dag-node-rect { stroke-dasharray: 5 3; }
 .dag-edge-label { font-family: var(--font); font-size: var(--fs-xs); fill: var(--dag-edge); }
 
 .dag-legend { display: flex; flex-wrap: wrap; gap: 0.5rem 1.5rem; padding: 1rem 24px; font-size: var(--fs-xs); color: var(--tx2); }
