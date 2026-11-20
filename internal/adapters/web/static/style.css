@@ -416,42 +416,47 @@ h2 {
     background: var(--ln);
 }
 
-/* DAG */
+/* DAG — palette follows the website mockup: purple agent, green script,
+   amber poll; muted edges. Layout lives in console-dag.js. */
 .dag-svg { display: block; }
-#workflow-dag { overflow: auto; }
-
-.dag-node-rect {
-    fill: var(--bg);
-    stroke: var(--ln);
-    stroke-width: 1.5;
-    rx: 4;
+#workflow-dag {
+    overflow: auto;
+    --dag-edge: #9aa3b0;
+    --dag-agent-bg: #2d2757;   --dag-agent-ln: #8e7cf0;
+    --dag-script-bg: #123b30;  --dag-script-ln: #2fd0a0;
+    --dag-poll-bg: #4a350f;    --dag-poll-ln: #e0a020;
+    --dag-workflow-bg: #1f3347; --dag-workflow-ln: #5aa9ff;
+    --dag-pill-bg: #263040;    --dag-pill-ln: #8b95a5;
 }
 
-.dag-node:hover .dag-node-rect { stroke: var(--ac); stroke-width: 2; }
+.dag-node-rect { fill: var(--dag-pill-bg); stroke: var(--dag-pill-ln); stroke-width: 1.5; }
+.dag-type-agent { fill: var(--dag-agent-bg); stroke: var(--dag-agent-ln); }
+.dag-type-script { fill: var(--dag-script-bg); stroke: var(--dag-script-ln); }
+.dag-type-poll { fill: var(--dag-poll-bg); stroke: var(--dag-poll-ln); }
+.dag-type-workflow { fill: var(--dag-workflow-bg); stroke: var(--dag-workflow-ln); }
+
+.dag-node { cursor: pointer; }
+.dag-node:hover .dag-node-rect { stroke-width: 2.5; }
 
 .dag-node-text {
     font-family: var(--font);
     font-size: var(--fs-sm);
+    font-weight: 600;
     fill: var(--tx);
 }
+.dag-node-sub { font-family: var(--font); font-size: var(--fs-xs); fill: var(--tx2); }
 
-.dag-edge {
-    fill: none;
-    stroke: var(--mu);
-    stroke-width: 1.5;
-}
+.dag-edge { fill: none; stroke: var(--dag-edge); stroke-width: 1.5; }
+.dag-arrow { fill: var(--dag-edge); }
+.dag-edge-label { font-family: var(--font); font-size: var(--fs-xs); fill: var(--dag-edge); }
 
-.dag-edge-label {
-    font-family: var(--font);
-    font-size: var(--fs-xs);
-    fill: var(--mu);
-    text-anchor: start;
-}
-
-.dag-terminal-done { fill: var(--badge-succeeded-bg); stroke: var(--badge-succeeded-text); }
-.dag-terminal-abort { fill: var(--badge-failed-bg); stroke: var(--badge-failed-text); }
-
-.dag-link-node { stroke: none; }
+.dag-legend { display: flex; flex-wrap: wrap; gap: 0.5rem 1.5rem; padding: 1rem 24px; font-size: var(--fs-xs); color: var(--tx2); }
+.dag-legend-item { display: inline-flex; align-items: center; gap: 0.5rem; }
+.dag-swatch { width: 14px; height: 14px; border-radius: 3px; stroke-width: 1.5; border: 1.5px solid; }
+.dag-swatch.dag-type-agent { background: var(--dag-agent-bg); border-color: var(--dag-agent-ln); }
+.dag-swatch.dag-type-script { background: var(--dag-script-bg); border-color: var(--dag-script-ln); }
+.dag-swatch.dag-type-poll { background: var(--dag-poll-bg); border-color: var(--dag-poll-ln); }
+.dag-swatch.dag-type-workflow { background: var(--dag-workflow-bg); border-color: var(--dag-workflow-ln); }
 
 /* Drawer */
 .drawer {

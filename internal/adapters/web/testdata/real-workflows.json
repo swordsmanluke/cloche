@@ -1,0 +1,2639 @@
+[
+ {
+  "entry_step": "implement",
+  "name": ".cloche/develop.cloche#develop",
+  "steps": [
+   {
+    "name": "fix",
+    "type": "agent"
+   },
+   {
+    "name": "implement",
+    "type": "agent"
+   },
+   {
+    "name": "review",
+    "type": "agent"
+   },
+   {
+    "name": "test",
+    "type": "script"
+   },
+   {
+    "name": "update-docs",
+    "type": "agent"
+   },
+   {
+    "name": "verify-changes",
+    "type": "script"
+   }
+  ],
+  "wires": [
+   {
+    "from": "implement",
+    "result": "success",
+    "to": "verify-changes"
+   },
+   {
+    "from": "implement",
+    "result": "fail",
+    "to": "abort"
+   },
+   {
+    "from": "verify-changes",
+    "result": "success",
+    "to": "test"
+   },
+   {
+    "from": "verify-changes",
+    "result": "fail",
+    "to": "abort"
+   },
+   {
+    "from": "test",
+    "result": "success",
+    "to": "review"
+   },
+   {
+    "from": "test",
+    "result": "fail",
+    "to": "fix"
+   },
+   {
+    "from": "test",
+    "result": "env-error",
+    "to": "abort"
+   },
+   {
+    "from": "fix",
+    "result": "success",
+    "to": "test"
+   },
+   {
+    "from": "fix",
+    "result": "fail",
+    "to": "abort"
+   },
+   {
+    "from": "fix",
+    "result": "give-up",
+    "to": "abort"
+   },
+   {
+    "from": "review",
+    "result": "success",
+    "to": "update-docs"
+   },
+   {
+    "from": "review",
+    "result": "fail",
+    "to": "fix"
+   },
+   {
+    "from": "review",
+    "result": "give-up",
+    "to": "update-docs"
+   },
+   {
+    "from": "update-docs",
+    "result": "success",
+    "to": "done"
+   },
+   {
+    "from": "update-docs",
+    "result": "fail",
+    "to": "done"
+   },
+   {
+    "from": "fix",
+    "implicit": true,
+    "result": "timeout",
+    "to": "abort"
+   },
+   {
+    "from": "review",
+    "implicit": true,
+    "result": "timeout",
+    "to": "abort"
+   },
+   {
+    "from": "update-docs",
+    "implicit": true,
+    "result": "timeout",
+    "to": "abort"
+   },
+   {
+    "from": "implement",
+    "implicit": true,
+    "result": "timeout",
+    "to": "abort"
+   },
+   {
+    "from": "verify-changes",
+    "implicit": true,
+    "result": "timeout",
+    "to": "abort"
+   },
+   {
+    "from": "test",
+    "implicit": true,
+    "result": "timeout",
+    "to": "abort"
+   },
+   {
+    "from": "implement",
+    "implicit": true,
+    "result": "token-limit",
+    "to": "abort"
+   },
+   {
+    "from": "verify-changes",
+    "implicit": true,
+    "result": "token-limit",
+    "to": "abort"
+   },
+   {
+    "from": "test",
+    "implicit": true,
+    "result": "token-limit",
+    "to": "abort"
+   },
+   {
+    "from": "fix",
+    "implicit": true,
+    "result": "token-limit",
+    "to": "abort"
+   },
+   {
+    "from": "review",
+    "implicit": true,
+    "result": "token-limit",
+    "to": "abort"
+   },
+   {
+    "from": "update-docs",
+    "implicit": true,
+    "result": "token-limit",
+    "to": "abort"
+   }
+  ]
+ },
+ {
+  "entry_step": "guard",
+  "name": ".cloche/host.cloche#changelog",
+  "steps": [
+   {
+    "name": "collect-commits",
+    "type": "script"
+   },
+   {
+    "name": "commit",
+    "type": "script"
+   },
+   {
+    "name": "draft",
+    "type": "agent"
+   },
+   {
+    "name": "guard",
+    "type": "script"
+   }
+  ],
+  "wires": [
+   {
+    "from": "guard",
+    "result": "success",
+    "to": "collect-commits"
+   },
+   {
+    "from": "guard",
+    "result": "fail",
+    "to": "abort"
+   },
+   {
+    "from": "collect-commits",
+    "result": "success",
+    "to": "draft"
+   },
+   {
+    "from": "collect-commits",
+    "result": "fail",
+    "to": "abort"
+   },
+   {
+    "from": "draft",
+    "result": "success",
+    "to": "commit"
+   },
+   {
+    "from": "draft",
+    "result": "fail",
+    "to": "abort"
+   },
+   {
+    "from": "commit",
+    "result": "success",
+    "to": "done"
+   },
+   {
+    "from": "commit",
+    "result": "fail",
+    "to": "abort"
+   },
+   {
+    "from": "collect-commits",
+    "implicit": true,
+    "result": "timeout",
+    "to": "abort"
+   },
+   {
+    "from": "draft",
+    "implicit": true,
+    "result": "timeout",
+    "to": "abort"
+   },
+   {
+    "from": "commit",
+    "implicit": true,
+    "result": "timeout",
+    "to": "abort"
+   },
+   {
+    "from": "guard",
+    "implicit": true,
+    "result": "timeout",
+    "to": "abort"
+   },
+   {
+    "from": "guard",
+    "implicit": true,
+    "result": "token-limit",
+    "to": "abort"
+   },
+   {
+    "from": "collect-commits",
+    "implicit": true,
+    "result": "token-limit",
+    "to": "abort"
+   },
+   {
+    "from": "draft",
+    "implicit": true,
+    "result": "token-limit",
+    "to": "abort"
+   },
+   {
+    "from": "commit",
+    "implicit": true,
+    "result": "token-limit",
+    "to": "abort"
+   }
+  ]
+ },
+ {
+  "entry_step": "wait",
+  "name": ".cloche/host.cloche#check-main",
+  "steps": [
+   {
+    "name": "changed",
+    "type": "script"
+   },
+   {
+    "name": "record-green",
+    "type": "script"
+   },
+   {
+    "name": "report-red",
+    "type": "script"
+   },
+   {
+    "name": "schedule",
+    "type": "script"
+   },
+   {
+    "name": "suite",
+    "type": "workflow"
+   },
+   {
+    "name": "wait",
+    "type": "poll"
+   }
+  ],
+  "wires": [
+   {
+    "from": "wait",
+    "result": "due",
+    "to": "changed"
+   },
+   {
+    "from": "wait",
+    "result": "timeout",
+    "to": "changed"
+   },
+   {
+    "from": "changed",
+    "result": "changed",
+    "to": "suite"
+   },
+   {
+    "from": "changed",
+    "result": "unchanged",
+    "to": "schedule"
+   },
+   {
+    "from": "changed",
+    "result": "skip",
+    "to": "schedule"
+   },
+   {
+    "from": "changed",
+    "result": "fail",
+    "to": "abort"
+   },
+   {
+    "from": "suite",
+    "result": "success",
+    "to": "record-green"
+   },
+   {
+    "from": "suite",
+    "result": "fail",
+    "to": "report-red"
+   },
+   {
+    "from": "record-green",
+    "result": "success",
+    "to": "schedule"
+   },
+   {
+    "from": "record-green",
+    "result": "fail",
+    "to": "abort"
+   },
+   {
+    "from": "report-red",
+    "result": "success",
+    "to": "schedule"
+   },
+   {
+    "from": "report-red",
+    "result": "fail",
+    "to": "schedule"
+   },
+   {
+    "from": "schedule",
+    "result": "success",
+    "to": "wait"
+   },
+   {
+    "from": "schedule",
+    "result": "fail",
+    "to": "abort"
+   },
+   {
+    "from": "changed",
+    "implicit": true,
+    "result": "timeout",
+    "to": "abort"
+   },
+   {
+    "from": "suite",
+    "implicit": true,
+    "result": "timeout",
+    "to": "abort"
+   },
+   {
+    "from": "record-green",
+    "implicit": true,
+    "result": "timeout",
+    "to": "abort"
+   },
+   {
+    "from": "report-red",
+    "implicit": true,
+    "result": "timeout",
+    "to": "abort"
+   },
+   {
+    "from": "schedule",
+    "implicit": true,
+    "result": "timeout",
+    "to": "abort"
+   },
+   {
+    "from": "wait",
+    "implicit": true,
+    "result": "token-limit",
+    "to": "abort"
+   },
+   {
+    "from": "changed",
+    "implicit": true,
+    "result": "token-limit",
+    "to": "abort"
+   },
+   {
+    "from": "suite",
+    "implicit": true,
+    "result": "token-limit",
+    "to": "abort"
+   },
+   {
+    "from": "record-green",
+    "implicit": true,
+    "result": "token-limit",
+    "to": "abort"
+   },
+   {
+    "from": "report-red",
+    "implicit": true,
+    "result": "token-limit",
+    "to": "abort"
+   },
+   {
+    "from": "schedule",
+    "implicit": true,
+    "result": "token-limit",
+    "to": "abort"
+   }
+  ]
+ },
+ {
+  "entry_step": "prepare-prompt",
+  "name": ".cloche/host.cloche#main",
+  "steps": [
+   {
+    "name": "bump-version",
+    "type": "script"
+   },
+   {
+    "name": "cleanup",
+    "type": "script"
+   },
+   {
+    "name": "close-task",
+    "type": "workflow"
+   },
+   {
+    "name": "develop",
+    "type": "workflow"
+   },
+   {
+    "name": "fix-merge-conflict",
+    "type": "agent"
+   },
+   {
+    "name": "merge",
+    "type": "script"
+   },
+   {
+    "name": "prepare-prompt",
+    "type": "script"
+   }
+  ],
+  "wires": [
+   {
+    "from": "prepare-prompt",
+    "result": "success",
+    "to": "develop"
+   },
+   {
+    "from": "prepare-prompt",
+    "result": "fail",
+    "to": "abort"
+   },
+   {
+    "from": "develop",
+    "result": "success",
+    "to": "merge"
+   },
+   {
+    "from": "develop",
+    "result": "fail",
+    "to": "abort"
+   },
+   {
+    "from": "merge",
+    "result": "success",
+    "to": "bump-version"
+   },
+   {
+    "from": "merge",
+    "result": "fail",
+    "to": "fix-merge-conflict"
+   },
+   {
+    "from": "fix-merge-conflict",
+    "result": "success",
+    "to": "bump-version"
+   },
+   {
+    "from": "fix-merge-conflict",
+    "result": "fail",
+    "to": "abort"
+   },
+   {
+    "from": "bump-version",
+    "result": "success",
+    "to": "close-task"
+   },
+   {
+    "from": "bump-version",
+    "result": "fail",
+    "to": "close-task"
+   },
+   {
+    "from": "close-task",
+    "result": "success",
+    "to": "cleanup"
+   },
+   {
+    "from": "close-task",
+    "result": "fail",
+    "to": "cleanup"
+   },
+   {
+    "from": "cleanup",
+    "result": "success",
+    "to": "done"
+   },
+   {
+    "from": "cleanup",
+    "result": "fail",
+    "to": "done"
+   },
+   {
+    "from": "prepare-prompt",
+    "implicit": true,
+    "result": "timeout",
+    "to": "abort"
+   },
+   {
+    "from": "develop",
+    "implicit": true,
+    "result": "timeout",
+    "to": "abort"
+   },
+   {
+    "from": "merge",
+    "implicit": true,
+    "result": "timeout",
+    "to": "abort"
+   },
+   {
+    "from": "fix-merge-conflict",
+    "implicit": true,
+    "result": "timeout",
+    "to": "abort"
+   },
+   {
+    "from": "bump-version",
+    "implicit": true,
+    "result": "timeout",
+    "to": "abort"
+   },
+   {
+    "from": "close-task",
+    "implicit": true,
+    "result": "timeout",
+    "to": "abort"
+   },
+   {
+    "from": "cleanup",
+    "implicit": true,
+    "result": "timeout",
+    "to": "abort"
+   },
+   {
+    "from": "prepare-prompt",
+    "implicit": true,
+    "result": "token-limit",
+    "to": "abort"
+   },
+   {
+    "from": "develop",
+    "implicit": true,
+    "result": "token-limit",
+    "to": "abort"
+   },
+   {
+    "from": "merge",
+    "implicit": true,
+    "result": "token-limit",
+    "to": "abort"
+   },
+   {
+    "from": "fix-merge-conflict",
+    "implicit": true,
+    "result": "token-limit",
+    "to": "abort"
+   },
+   {
+    "from": "bump-version",
+    "implicit": true,
+    "result": "token-limit",
+    "to": "abort"
+   },
+   {
+    "from": "close-task",
+    "implicit": true,
+    "result": "token-limit",
+    "to": "abort"
+   },
+   {
+    "from": "cleanup",
+    "implicit": true,
+    "result": "token-limit",
+    "to": "abort"
+   }
+  ]
+ },
+ {
+  "entry_step": "guard",
+  "name": ".cloche/host.cloche#release",
+  "steps": [
+   {
+    "name": "guard",
+    "type": "script"
+   },
+   {
+    "name": "publish",
+    "type": "script"
+   },
+   {
+    "name": "tag",
+    "type": "script"
+   }
+  ],
+  "wires": [
+   {
+    "from": "guard",
+    "result": "success",
+    "to": "tag"
+   },
+   {
+    "from": "guard",
+    "result": "fail",
+    "to": "abort"
+   },
+   {
+    "from": "tag",
+    "result": "success",
+    "to": "publish"
+   },
+   {
+    "from": "tag",
+    "result": "fail",
+    "to": "abort"
+   },
+   {
+    "from": "publish",
+    "result": "success",
+    "to": "done"
+   },
+   {
+    "from": "publish",
+    "result": "skipped",
+    "to": "done"
+   },
+   {
+    "from": "publish",
+    "result": "fail",
+    "to": "abort"
+   },
+   {
+    "from": "guard",
+    "implicit": true,
+    "result": "timeout",
+    "to": "abort"
+   },
+   {
+    "from": "tag",
+    "implicit": true,
+    "result": "timeout",
+    "to": "abort"
+   },
+   {
+    "from": "publish",
+    "implicit": true,
+    "result": "timeout",
+    "to": "abort"
+   },
+   {
+    "from": "guard",
+    "implicit": true,
+    "result": "token-limit",
+    "to": "abort"
+   },
+   {
+    "from": "tag",
+    "implicit": true,
+    "result": "token-limit",
+    "to": "abort"
+   },
+   {
+    "from": "publish",
+    "implicit": true,
+    "result": "token-limit",
+    "to": "abort"
+   }
+  ]
+ },
+ {
+  "entry_step": "pull-comments",
+  "name": ".cloche/vertical.cloche#address-pr-feedback",
+  "steps": [
+   {
+    "name": "pull-comments",
+    "type": "script"
+   },
+   {
+    "name": "push",
+    "type": "script"
+   },
+   {
+    "name": "respond",
+    "type": "agent"
+   },
+   {
+    "name": "verify",
+    "type": "script"
+   }
+  ],
+  "wires": [
+   {
+    "from": "pull-comments",
+    "result": "success",
+    "to": "respond"
+   },
+   {
+    "from": "pull-comments",
+    "result": "fail",
+    "to": "abort"
+   },
+   {
+    "from": "respond",
+    "result": "success",
+    "to": "verify"
+   },
+   {
+    "from": "respond",
+    "result": "fail",
+    "to": "abort"
+   },
+   {
+    "from": "verify",
+    "result": "success",
+    "to": "push"
+   },
+   {
+    "from": "verify",
+    "result": "fail",
+    "to": "abort"
+   },
+   {
+    "from": "push",
+    "result": "success",
+    "to": "done"
+   },
+   {
+    "from": "push",
+    "result": "fail",
+    "to": "abort"
+   },
+   {
+    "from": "respond",
+    "implicit": true,
+    "result": "timeout",
+    "to": "abort"
+   },
+   {
+    "from": "verify",
+    "implicit": true,
+    "result": "timeout",
+    "to": "abort"
+   },
+   {
+    "from": "push",
+    "implicit": true,
+    "result": "timeout",
+    "to": "abort"
+   },
+   {
+    "from": "pull-comments",
+    "implicit": true,
+    "result": "timeout",
+    "to": "abort"
+   },
+   {
+    "from": "verify",
+    "implicit": true,
+    "result": "token-limit",
+    "to": "abort"
+   },
+   {
+    "from": "push",
+    "implicit": true,
+    "result": "token-limit",
+    "to": "abort"
+   },
+   {
+    "from": "pull-comments",
+    "implicit": true,
+    "result": "token-limit",
+    "to": "abort"
+   },
+   {
+    "from": "respond",
+    "implicit": true,
+    "result": "token-limit",
+    "to": "abort"
+   }
+  ]
+ },
+ {
+  "entry_step": "read-layer",
+  "name": ".cloche/vertical.cloche#implement-vertical-layer",
+  "steps": [
+   {
+    "name": "fix",
+    "type": "agent"
+   },
+   {
+    "name": "implement",
+    "type": "agent"
+   },
+   {
+    "name": "mark-stuck",
+    "type": "script"
+   },
+   {
+    "name": "mark-success",
+    "type": "script"
+   },
+   {
+    "name": "read-layer",
+    "type": "script"
+   },
+   {
+    "name": "self-review",
+    "type": "agent"
+   },
+   {
+    "name": "test",
+    "type": "script"
+   },
+   {
+    "name": "verify",
+    "type": "script"
+   }
+  ],
+  "wires": [
+   {
+    "from": "read-layer",
+    "result": "success",
+    "to": "implement"
+   },
+   {
+    "from": "read-layer",
+    "result": "fail",
+    "to": "abort"
+   },
+   {
+    "from": "implement",
+    "result": "success",
+    "to": "verify"
+   },
+   {
+    "from": "implement",
+    "result": "fail",
+    "to": "mark-stuck"
+   },
+   {
+    "from": "verify",
+    "result": "success",
+    "to": "test"
+   },
+   {
+    "from": "verify",
+    "result": "fail",
+    "to": "mark-stuck"
+   },
+   {
+    "from": "test",
+    "result": "success",
+    "to": "self-review"
+   },
+   {
+    "from": "test",
+    "result": "fail",
+    "to": "fix"
+   },
+   {
+    "from": "fix",
+    "result": "success",
+    "to": "test"
+   },
+   {
+    "from": "fix",
+    "result": "fail",
+    "to": "mark-stuck"
+   },
+   {
+    "from": "fix",
+    "result": "give-up",
+    "to": "mark-stuck"
+   },
+   {
+    "from": "self-review",
+    "result": "success",
+    "to": "mark-success"
+   },
+   {
+    "from": "self-review",
+    "result": "fail",
+    "to": "mark-stuck"
+   },
+   {
+    "from": "self-review",
+    "result": "give-up",
+    "to": "mark-stuck"
+   },
+   {
+    "from": "mark-success",
+    "result": "success",
+    "to": "done"
+   },
+   {
+    "from": "mark-stuck",
+    "result": "success",
+    "to": "done"
+   },
+   {
+    "from": "self-review",
+    "implicit": true,
+    "result": "timeout",
+    "to": "abort"
+   },
+   {
+    "from": "mark-success",
+    "implicit": true,
+    "result": "timeout",
+    "to": "abort"
+   },
+   {
+    "from": "mark-stuck",
+    "implicit": true,
+    "result": "timeout",
+    "to": "abort"
+   },
+   {
+    "from": "read-layer",
+    "implicit": true,
+    "result": "timeout",
+    "to": "abort"
+   },
+   {
+    "from": "implement",
+    "implicit": true,
+    "result": "timeout",
+    "to": "abort"
+   },
+   {
+    "from": "verify",
+    "implicit": true,
+    "result": "timeout",
+    "to": "abort"
+   },
+   {
+    "from": "test",
+    "implicit": true,
+    "result": "timeout",
+    "to": "abort"
+   },
+   {
+    "from": "fix",
+    "implicit": true,
+    "result": "timeout",
+    "to": "abort"
+   },
+   {
+    "from": "test",
+    "implicit": true,
+    "result": "token-limit",
+    "to": "abort"
+   },
+   {
+    "from": "fix",
+    "implicit": true,
+    "result": "token-limit",
+    "to": "abort"
+   },
+   {
+    "from": "self-review",
+    "implicit": true,
+    "result": "token-limit",
+    "to": "abort"
+   },
+   {
+    "from": "mark-success",
+    "implicit": true,
+    "result": "token-limit",
+    "to": "abort"
+   },
+   {
+    "from": "mark-stuck",
+    "implicit": true,
+    "result": "token-limit",
+    "to": "abort"
+   },
+   {
+    "from": "read-layer",
+    "implicit": true,
+    "result": "token-limit",
+    "to": "abort"
+   },
+   {
+    "from": "implement",
+    "implicit": true,
+    "result": "token-limit",
+    "to": "abort"
+   },
+   {
+    "from": "verify",
+    "implicit": true,
+    "result": "token-limit",
+    "to": "abort"
+   }
+  ]
+ },
+ {
+  "entry_step": "claim",
+  "name": ".cloche/vertical.cloche#vertical",
+  "steps": [
+   {
+    "name": "address-design-feedback",
+    "type": "agent"
+   },
+   {
+    "name": "address-docs-feedback",
+    "type": "workflow"
+   },
+   {
+    "name": "address-feedback",
+    "type": "workflow"
+   },
+   {
+    "name": "address-test-plan-feedback",
+    "type": "workflow"
+   },
+   {
+    "name": "bdd-test-plan",
+    "type": "workflow"
+   },
+   {
+    "name": "check-design-needed",
+    "type": "agent"
+   },
+   {
+    "name": "claim",
+    "type": "workflow"
+   },
+   {
+    "name": "close-layer",
+    "type": "script"
+   },
+   {
+    "name": "finalize",
+    "type": "script"
+   },
+   {
+    "name": "implement-layer",
+    "type": "workflow"
+   },
+   {
+    "name": "open-design-pr",
+    "type": "script"
+   },
+   {
+    "name": "open-docs-pr",
+    "type": "script"
+   },
+   {
+    "name": "open-pr",
+    "type": "script"
+   },
+   {
+    "name": "open-test-plan-pr",
+    "type": "script"
+   },
+   {
+    "name": "pick-next-layer",
+    "type": "script"
+   },
+   {
+    "name": "plan-feature",
+    "type": "agent"
+   },
+   {
+    "name": "poll-design-pr",
+    "type": "poll"
+   },
+   {
+    "name": "poll-docs-pr",
+    "type": "poll"
+   },
+   {
+    "name": "poll-pr",
+    "type": "poll"
+   },
+   {
+    "name": "poll-test-plan-pr",
+    "type": "poll"
+   },
+   {
+    "name": "prepare-design-branch",
+    "type": "script"
+   },
+   {
+    "name": "record-design",
+    "type": "script"
+   },
+   {
+    "name": "record-test-plan",
+    "type": "script"
+   },
+   {
+    "name": "update-docs",
+    "type": "workflow"
+   },
+   {
+    "name": "write-design",
+    "type": "agent"
+   }
+  ],
+  "wires": [
+   {
+    "from": "claim",
+    "result": "success",
+    "to": "check-design-needed"
+   },
+   {
+    "from": "claim",
+    "result": "fail",
+    "to": "abort"
+   },
+   {
+    "from": "check-design-needed",
+    "result": "has-design",
+    "to": "plan-feature"
+   },
+   {
+    "from": "check-design-needed",
+    "result": "needs-design",
+    "to": "prepare-design-branch"
+   },
+   {
+    "from": "check-design-needed",
+    "result": "fail",
+    "to": "abort"
+   },
+   {
+    "from": "prepare-design-branch",
+    "result": "success",
+    "to": "write-design"
+   },
+   {
+    "from": "prepare-design-branch",
+    "result": "fail",
+    "to": "abort"
+   },
+   {
+    "from": "write-design",
+    "result": "success",
+    "to": "open-design-pr"
+   },
+   {
+    "from": "write-design",
+    "result": "fail",
+    "to": "abort"
+   },
+   {
+    "from": "open-design-pr",
+    "result": "success",
+    "to": "poll-design-pr"
+   },
+   {
+    "from": "open-design-pr",
+    "result": "fail",
+    "to": "abort"
+   },
+   {
+    "from": "poll-design-pr",
+    "result": "approved",
+    "to": "record-design"
+   },
+   {
+    "from": "poll-design-pr",
+    "result": "feedback",
+    "to": "address-design-feedback"
+   },
+   {
+    "from": "poll-design-pr",
+    "result": "fail",
+    "to": "abort"
+   },
+   {
+    "from": "address-design-feedback",
+    "result": "success",
+    "to": "poll-design-pr"
+   },
+   {
+    "from": "address-design-feedback",
+    "result": "fail",
+    "to": "abort"
+   },
+   {
+    "from": "address-design-feedback",
+    "result": "give-up",
+    "to": "abort"
+   },
+   {
+    "from": "record-design",
+    "result": "success",
+    "to": "plan-feature"
+   },
+   {
+    "from": "record-design",
+    "result": "fail",
+    "to": "abort"
+   },
+   {
+    "from": "plan-feature",
+    "result": "success",
+    "to": "bdd-test-plan"
+   },
+   {
+    "from": "plan-feature",
+    "result": "fail",
+    "to": "abort"
+   },
+   {
+    "from": "bdd-test-plan",
+    "result": "success",
+    "to": "open-test-plan-pr"
+   },
+   {
+    "from": "bdd-test-plan",
+    "result": "fail",
+    "to": "abort"
+   },
+   {
+    "from": "open-test-plan-pr",
+    "result": "success",
+    "to": "poll-test-plan-pr"
+   },
+   {
+    "from": "open-test-plan-pr",
+    "result": "fail",
+    "to": "abort"
+   },
+   {
+    "from": "poll-test-plan-pr",
+    "result": "approved",
+    "to": "record-test-plan"
+   },
+   {
+    "from": "poll-test-plan-pr",
+    "result": "feedback",
+    "to": "address-test-plan-feedback"
+   },
+   {
+    "from": "poll-test-plan-pr",
+    "result": "fail",
+    "to": "abort"
+   },
+   {
+    "from": "address-test-plan-feedback",
+    "result": "success",
+    "to": "poll-test-plan-pr"
+   },
+   {
+    "from": "address-test-plan-feedback",
+    "result": "fail",
+    "to": "abort"
+   },
+   {
+    "from": "record-test-plan",
+    "result": "success",
+    "to": "pick-next-layer"
+   },
+   {
+    "from": "record-test-plan",
+    "result": "fail",
+    "to": "abort"
+   },
+   {
+    "from": "pick-next-layer",
+    "result": "has-layer",
+    "to": "implement-layer"
+   },
+   {
+    "from": "pick-next-layer",
+    "result": "no-more-layers",
+    "to": "update-docs"
+   },
+   {
+    "from": "pick-next-layer",
+    "result": "fail",
+    "to": "abort"
+   },
+   {
+    "from": "implement-layer",
+    "result": "success",
+    "to": "open-pr"
+   },
+   {
+    "from": "implement-layer",
+    "result": "fail",
+    "to": "abort"
+   },
+   {
+    "from": "open-pr",
+    "result": "success",
+    "to": "poll-pr"
+   },
+   {
+    "from": "open-pr",
+    "result": "fail",
+    "to": "abort"
+   },
+   {
+    "from": "poll-pr",
+    "result": "approved",
+    "to": "close-layer"
+   },
+   {
+    "from": "poll-pr",
+    "result": "feedback",
+    "to": "address-feedback"
+   },
+   {
+    "from": "poll-pr",
+    "result": "fail",
+    "to": "abort"
+   },
+   {
+    "from": "address-feedback",
+    "result": "success",
+    "to": "poll-pr"
+   },
+   {
+    "from": "address-feedback",
+    "result": "fail",
+    "to": "abort"
+   },
+   {
+    "from": "close-layer",
+    "result": "success",
+    "to": "pick-next-layer"
+   },
+   {
+    "from": "close-layer",
+    "result": "fail",
+    "to": "abort"
+   },
+   {
+    "from": "update-docs",
+    "result": "success",
+    "to": "open-docs-pr"
+   },
+   {
+    "from": "update-docs",
+    "result": "fail",
+    "to": "abort"
+   },
+   {
+    "from": "open-docs-pr",
+    "result": "success",
+    "to": "poll-docs-pr"
+   },
+   {
+    "from": "open-docs-pr",
+    "result": "fail",
+    "to": "abort"
+   },
+   {
+    "from": "poll-docs-pr",
+    "result": "approved",
+    "to": "finalize"
+   },
+   {
+    "from": "poll-docs-pr",
+    "result": "feedback",
+    "to": "address-docs-feedback"
+   },
+   {
+    "from": "poll-docs-pr",
+    "result": "fail",
+    "to": "abort"
+   },
+   {
+    "from": "address-docs-feedback",
+    "result": "success",
+    "to": "poll-docs-pr"
+   },
+   {
+    "from": "address-docs-feedback",
+    "result": "fail",
+    "to": "abort"
+   },
+   {
+    "from": "finalize",
+    "result": "success",
+    "to": "done"
+   },
+   {
+    "from": "finalize",
+    "result": "fail",
+    "to": "abort"
+   },
+   {
+    "from": "finalize",
+    "implicit": true,
+    "result": "timeout",
+    "to": "abort"
+   },
+   {
+    "from": "address-design-feedback",
+    "implicit": true,
+    "result": "timeout",
+    "to": "abort"
+   },
+   {
+    "from": "open-test-plan-pr",
+    "implicit": true,
+    "result": "timeout",
+    "to": "abort"
+   },
+   {
+    "from": "poll-test-plan-pr",
+    "implicit": true,
+    "result": "timeout",
+    "to": "abort"
+   },
+   {
+    "from": "address-test-plan-feedback",
+    "implicit": true,
+    "result": "timeout",
+    "to": "abort"
+   },
+   {
+    "from": "close-layer",
+    "implicit": true,
+    "result": "timeout",
+    "to": "abort"
+   },
+   {
+    "from": "update-docs",
+    "implicit": true,
+    "result": "timeout",
+    "to": "abort"
+   },
+   {
+    "from": "address-docs-feedback",
+    "implicit": true,
+    "result": "timeout",
+    "to": "abort"
+   },
+   {
+    "from": "check-design-needed",
+    "implicit": true,
+    "result": "timeout",
+    "to": "abort"
+   },
+   {
+    "from": "poll-design-pr",
+    "implicit": true,
+    "result": "timeout",
+    "to": "abort"
+   },
+   {
+    "from": "record-design",
+    "implicit": true,
+    "result": "timeout",
+    "to": "abort"
+   },
+   {
+    "from": "plan-feature",
+    "implicit": true,
+    "result": "timeout",
+    "to": "abort"
+   },
+   {
+    "from": "bdd-test-plan",
+    "implicit": true,
+    "result": "timeout",
+    "to": "abort"
+   },
+   {
+    "from": "open-pr",
+    "implicit": true,
+    "result": "timeout",
+    "to": "abort"
+   },
+   {
+    "from": "poll-pr",
+    "implicit": true,
+    "result": "timeout",
+    "to": "abort"
+   },
+   {
+    "from": "open-docs-pr",
+    "implicit": true,
+    "result": "timeout",
+    "to": "abort"
+   },
+   {
+    "from": "write-design",
+    "implicit": true,
+    "result": "timeout",
+    "to": "abort"
+   },
+   {
+    "from": "implement-layer",
+    "implicit": true,
+    "result": "timeout",
+    "to": "abort"
+   },
+   {
+    "from": "claim",
+    "implicit": true,
+    "result": "timeout",
+    "to": "abort"
+   },
+   {
+    "from": "prepare-design-branch",
+    "implicit": true,
+    "result": "timeout",
+    "to": "abort"
+   },
+   {
+    "from": "open-design-pr",
+    "implicit": true,
+    "result": "timeout",
+    "to": "abort"
+   },
+   {
+    "from": "record-test-plan",
+    "implicit": true,
+    "result": "timeout",
+    "to": "abort"
+   },
+   {
+    "from": "pick-next-layer",
+    "implicit": true,
+    "result": "timeout",
+    "to": "abort"
+   },
+   {
+    "from": "address-feedback",
+    "implicit": true,
+    "result": "timeout",
+    "to": "abort"
+   },
+   {
+    "from": "poll-docs-pr",
+    "implicit": true,
+    "result": "timeout",
+    "to": "abort"
+   },
+   {
+    "from": "write-design",
+    "implicit": true,
+    "result": "token-limit",
+    "to": "abort"
+   },
+   {
+    "from": "implement-layer",
+    "implicit": true,
+    "result": "token-limit",
+    "to": "abort"
+   },
+   {
+    "from": "claim",
+    "implicit": true,
+    "result": "token-limit",
+    "to": "abort"
+   },
+   {
+    "from": "prepare-design-branch",
+    "implicit": true,
+    "result": "token-limit",
+    "to": "abort"
+   },
+   {
+    "from": "open-design-pr",
+    "implicit": true,
+    "result": "token-limit",
+    "to": "abort"
+   },
+   {
+    "from": "record-test-plan",
+    "implicit": true,
+    "result": "token-limit",
+    "to": "abort"
+   },
+   {
+    "from": "pick-next-layer",
+    "implicit": true,
+    "result": "token-limit",
+    "to": "abort"
+   },
+   {
+    "from": "address-feedback",
+    "implicit": true,
+    "result": "token-limit",
+    "to": "abort"
+   },
+   {
+    "from": "poll-docs-pr",
+    "implicit": true,
+    "result": "token-limit",
+    "to": "abort"
+   },
+   {
+    "from": "finalize",
+    "implicit": true,
+    "result": "token-limit",
+    "to": "abort"
+   },
+   {
+    "from": "address-design-feedback",
+    "implicit": true,
+    "result": "token-limit",
+    "to": "abort"
+   },
+   {
+    "from": "open-test-plan-pr",
+    "implicit": true,
+    "result": "token-limit",
+    "to": "abort"
+   },
+   {
+    "from": "poll-test-plan-pr",
+    "implicit": true,
+    "result": "token-limit",
+    "to": "abort"
+   },
+   {
+    "from": "address-test-plan-feedback",
+    "implicit": true,
+    "result": "token-limit",
+    "to": "abort"
+   },
+   {
+    "from": "close-layer",
+    "implicit": true,
+    "result": "token-limit",
+    "to": "abort"
+   },
+   {
+    "from": "update-docs",
+    "implicit": true,
+    "result": "token-limit",
+    "to": "abort"
+   },
+   {
+    "from": "address-docs-feedback",
+    "implicit": true,
+    "result": "token-limit",
+    "to": "abort"
+   },
+   {
+    "from": "check-design-needed",
+    "implicit": true,
+    "result": "token-limit",
+    "to": "abort"
+   },
+   {
+    "from": "poll-design-pr",
+    "implicit": true,
+    "result": "token-limit",
+    "to": "abort"
+   },
+   {
+    "from": "record-design",
+    "implicit": true,
+    "result": "token-limit",
+    "to": "abort"
+   },
+   {
+    "from": "plan-feature",
+    "implicit": true,
+    "result": "token-limit",
+    "to": "abort"
+   },
+   {
+    "from": "bdd-test-plan",
+    "implicit": true,
+    "result": "token-limit",
+    "to": "abort"
+   },
+   {
+    "from": "open-pr",
+    "implicit": true,
+    "result": "token-limit",
+    "to": "abort"
+   },
+   {
+    "from": "poll-pr",
+    "implicit": true,
+    "result": "token-limit",
+    "to": "abort"
+   },
+   {
+    "from": "open-docs-pr",
+    "implicit": true,
+    "result": "token-limit",
+    "to": "abort"
+   }
+  ]
+ },
+ {
+  "entry_step": "prepare-branch",
+  "name": ".cloche/vertical.cloche#vertical-bdd-test-plan",
+  "steps": [
+   {
+    "name": "prepare-branch",
+    "type": "script"
+   },
+   {
+    "name": "verify",
+    "type": "script"
+   },
+   {
+    "name": "write-plan",
+    "type": "agent"
+   }
+  ],
+  "wires": [
+   {
+    "from": "prepare-branch",
+    "result": "success",
+    "to": "write-plan"
+   },
+   {
+    "from": "prepare-branch",
+    "result": "fail",
+    "to": "abort"
+   },
+   {
+    "from": "write-plan",
+    "result": "success",
+    "to": "verify"
+   },
+   {
+    "from": "write-plan",
+    "result": "fail",
+    "to": "abort"
+   },
+   {
+    "from": "verify",
+    "result": "success",
+    "to": "done"
+   },
+   {
+    "from": "verify",
+    "result": "fail",
+    "to": "abort"
+   },
+   {
+    "from": "prepare-branch",
+    "implicit": true,
+    "result": "timeout",
+    "to": "abort"
+   },
+   {
+    "from": "write-plan",
+    "implicit": true,
+    "result": "timeout",
+    "to": "abort"
+   },
+   {
+    "from": "verify",
+    "implicit": true,
+    "result": "timeout",
+    "to": "abort"
+   },
+   {
+    "from": "prepare-branch",
+    "implicit": true,
+    "result": "token-limit",
+    "to": "abort"
+   },
+   {
+    "from": "write-plan",
+    "implicit": true,
+    "result": "token-limit",
+    "to": "abort"
+   },
+   {
+    "from": "verify",
+    "implicit": true,
+    "result": "token-limit",
+    "to": "abort"
+   }
+  ]
+ },
+ {
+  "entry_step": "prepare-branch",
+  "name": ".cloche/vertical.cloche#vertical-update-docs",
+  "steps": [
+   {
+    "name": "prepare-branch",
+    "type": "script"
+   },
+   {
+    "name": "verify",
+    "type": "script"
+   },
+   {
+    "name": "write-docs",
+    "type": "agent"
+   }
+  ],
+  "wires": [
+   {
+    "from": "prepare-branch",
+    "result": "success",
+    "to": "write-docs"
+   },
+   {
+    "from": "prepare-branch",
+    "result": "fail",
+    "to": "abort"
+   },
+   {
+    "from": "write-docs",
+    "result": "success",
+    "to": "verify"
+   },
+   {
+    "from": "write-docs",
+    "result": "fail",
+    "to": "abort"
+   },
+   {
+    "from": "verify",
+    "result": "success",
+    "to": "done"
+   },
+   {
+    "from": "verify",
+    "result": "fail",
+    "to": "abort"
+   },
+   {
+    "from": "prepare-branch",
+    "implicit": true,
+    "result": "timeout",
+    "to": "abort"
+   },
+   {
+    "from": "write-docs",
+    "implicit": true,
+    "result": "timeout",
+    "to": "abort"
+   },
+   {
+    "from": "verify",
+    "implicit": true,
+    "result": "timeout",
+    "to": "abort"
+   },
+   {
+    "from": "verify",
+    "implicit": true,
+    "result": "token-limit",
+    "to": "abort"
+   },
+   {
+    "from": "prepare-branch",
+    "implicit": true,
+    "result": "token-limit",
+    "to": "abort"
+   },
+   {
+    "from": "write-docs",
+    "implicit": true,
+    "result": "token-limit",
+    "to": "abort"
+   }
+  ]
+ },
+ {
+  "entry_step": "investigate",
+  "name": ".cloche/document.cloche#document",
+  "steps": [
+   {
+    "name": "check-missing",
+    "type": "agent"
+   },
+   {
+    "name": "investigate",
+    "type": "agent"
+   },
+   {
+    "name": "write-docs",
+    "type": "agent"
+   }
+  ],
+  "wires": [
+   {
+    "from": "investigate",
+    "result": "success",
+    "to": "check-missing"
+   },
+   {
+    "from": "investigate",
+    "result": "fail",
+    "to": "abort"
+   },
+   {
+    "from": "check-missing",
+    "result": "success",
+    "to": "write-docs"
+   },
+   {
+    "from": "check-missing",
+    "result": "fail",
+    "to": "abort"
+   },
+   {
+    "from": "write-docs",
+    "result": "success",
+    "to": "done"
+   },
+   {
+    "from": "write-docs",
+    "result": "fail",
+    "to": "abort"
+   },
+   {
+    "from": "investigate",
+    "implicit": true,
+    "result": "timeout",
+    "to": "abort"
+   },
+   {
+    "from": "check-missing",
+    "implicit": true,
+    "result": "timeout",
+    "to": "abort"
+   },
+   {
+    "from": "write-docs",
+    "implicit": true,
+    "result": "timeout",
+    "to": "abort"
+   },
+   {
+    "from": "investigate",
+    "implicit": true,
+    "result": "token-limit",
+    "to": "abort"
+   },
+   {
+    "from": "check-missing",
+    "implicit": true,
+    "result": "token-limit",
+    "to": "abort"
+   },
+   {
+    "from": "write-docs",
+    "implicit": true,
+    "result": "token-limit",
+    "to": "abort"
+   }
+  ]
+ },
+ {
+  "entry_step": "claim",
+  "name": ".cloche/modules/beads-tasks/tasks.cloche#claim-task",
+  "steps": [
+   {
+    "name": "claim",
+    "type": "script"
+   }
+  ],
+  "wires": [
+   {
+    "from": "claim",
+    "result": "success",
+    "to": "done"
+   },
+   {
+    "from": "claim",
+    "result": "fail",
+    "to": "abort"
+   },
+   {
+    "from": "claim",
+    "implicit": true,
+    "result": "timeout",
+    "to": "abort"
+   },
+   {
+    "from": "claim",
+    "implicit": true,
+    "result": "token-limit",
+    "to": "abort"
+   }
+  ]
+ },
+ {
+  "entry_step": "close",
+  "name": ".cloche/modules/beads-tasks/tasks.cloche#close-task",
+  "steps": [
+   {
+    "name": "close",
+    "type": "script"
+   }
+  ],
+  "wires": [
+   {
+    "from": "close",
+    "result": "success",
+    "to": "done"
+   },
+   {
+    "from": "close",
+    "result": "fail",
+    "to": "abort"
+   },
+   {
+    "from": "close",
+    "implicit": true,
+    "result": "timeout",
+    "to": "abort"
+   },
+   {
+    "from": "close",
+    "implicit": true,
+    "result": "token-limit",
+    "to": "abort"
+   }
+  ]
+ },
+ {
+  "entry_step": "create",
+  "name": ".cloche/modules/beads-tasks/tasks.cloche#create-task",
+  "steps": [
+   {
+    "name": "create",
+    "type": "script"
+   }
+  ],
+  "wires": [
+   {
+    "from": "create",
+    "result": "success",
+    "to": "done"
+   },
+   {
+    "from": "create",
+    "result": "fail",
+    "to": "abort"
+   },
+   {
+    "from": "create",
+    "implicit": true,
+    "result": "timeout",
+    "to": "abort"
+   },
+   {
+    "from": "create",
+    "implicit": true,
+    "result": "token-limit",
+    "to": "abort"
+   }
+  ]
+ },
+ {
+  "entry_step": "list",
+  "name": ".cloche/modules/beads-tasks/tasks.cloche#list-tasks",
+  "steps": [
+   {
+    "name": "list",
+    "type": "script"
+   }
+  ],
+  "wires": [
+   {
+    "from": "list",
+    "result": "success",
+    "to": "done"
+   },
+   {
+    "from": "list",
+    "result": "fail",
+    "to": "abort"
+   },
+   {
+    "from": "list",
+    "implicit": true,
+    "result": "timeout",
+    "to": "abort"
+   },
+   {
+    "from": "list",
+    "implicit": true,
+    "result": "token-limit",
+    "to": "abort"
+   }
+  ]
+ },
+ {
+  "entry_step": "release",
+  "name": ".cloche/modules/beads-tasks/tasks.cloche#release-task",
+  "steps": [
+   {
+    "name": "release",
+    "type": "script"
+   }
+  ],
+  "wires": [
+   {
+    "from": "release",
+    "result": "success",
+    "to": "done"
+   },
+   {
+    "from": "release",
+    "result": "fail",
+    "to": "abort"
+   },
+   {
+    "from": "release",
+    "implicit": true,
+    "result": "timeout",
+    "to": "abort"
+   },
+   {
+    "from": "release",
+    "implicit": true,
+    "result": "token-limit",
+    "to": "abort"
+   }
+  ]
+ },
+ {
+  "entry_step": "update",
+  "name": ".cloche/modules/beads-tasks/tasks.cloche#update-task",
+  "steps": [
+   {
+    "name": "update",
+    "type": "script"
+   }
+  ],
+  "wires": [
+   {
+    "from": "update",
+    "result": "success",
+    "to": "done"
+   },
+   {
+    "from": "update",
+    "result": "fail",
+    "to": "abort"
+   },
+   {
+    "from": "update",
+    "implicit": true,
+    "result": "timeout",
+    "to": "abort"
+   },
+   {
+    "from": "update",
+    "implicit": true,
+    "result": "token-limit",
+    "to": "abort"
+   }
+  ]
+ },
+ {
+  "entry_step": "setup",
+  "name": "examples/hello-world/flaky.cloche#flaky-retry",
+  "steps": [
+   {
+    "name": "build",
+    "type": "script"
+   },
+   {
+    "name": "setup",
+    "type": "script"
+   },
+   {
+    "name": "test",
+    "type": "script"
+   }
+  ],
+  "wires": [
+   {
+    "from": "setup",
+    "result": "success",
+    "to": "build"
+   },
+   {
+    "from": "setup",
+    "result": "fail",
+    "to": "abort"
+   },
+   {
+    "from": "build",
+    "result": "success",
+    "to": "test"
+   },
+   {
+    "from": "build",
+    "result": "fail",
+    "to": "abort"
+   },
+   {
+    "from": "test",
+    "result": "success",
+    "to": "done"
+   },
+   {
+    "from": "test",
+    "result": "fail",
+    "to": "build"
+   },
+   {
+    "from": "setup",
+    "implicit": true,
+    "result": "timeout",
+    "to": "abort"
+   },
+   {
+    "from": "build",
+    "implicit": true,
+    "result": "timeout",
+    "to": "abort"
+   },
+   {
+    "from": "test",
+    "implicit": true,
+    "result": "timeout",
+    "to": "abort"
+   },
+   {
+    "from": "setup",
+    "implicit": true,
+    "result": "token-limit",
+    "to": "abort"
+   },
+   {
+    "from": "build",
+    "implicit": true,
+    "result": "token-limit",
+    "to": "abort"
+   },
+   {
+    "from": "test",
+    "implicit": true,
+    "result": "token-limit",
+    "to": "abort"
+   }
+  ]
+ },
+ {
+  "entry_step": "design",
+  "name": "examples/mini-redis/develop.cloche#develop",
+  "steps": [
+   {
+    "name": "design",
+    "type": "agent"
+   },
+   {
+    "name": "fix",
+    "type": "agent"
+   },
+   {
+    "name": "implement",
+    "type": "agent"
+   },
+   {
+    "name": "lint",
+    "type": "script"
+   },
+   {
+    "name": "test",
+    "type": "script"
+   },
+   {
+    "name": "valgrind",
+    "type": "script"
+   }
+  ],
+  "wires": [
+   {
+    "from": "design",
+    "result": "success",
+    "to": "implement"
+   },
+   {
+    "from": "design",
+    "result": "fail",
+    "to": "abort"
+   },
+   {
+    "from": "implement",
+    "result": "success",
+    "to": "test"
+   },
+   {
+    "from": "implement",
+    "result": "fail",
+    "to": "abort"
+   },
+   {
+    "from": "test",
+    "result": "success",
+    "to": "lint"
+   },
+   {
+    "from": "test",
+    "result": "success",
+    "to": "valgrind"
+   },
+   {
+    "from": "test",
+    "result": "fail",
+    "to": "fix"
+   },
+   {
+    "from": "lint",
+    "result": "fail",
+    "to": "fix"
+   },
+   {
+    "from": "valgrind",
+    "result": "fail",
+    "to": "fix"
+   },
+   {
+    "from": "fix",
+    "result": "success",
+    "to": "test"
+   },
+   {
+    "from": "fix",
+    "result": "fail",
+    "to": "abort"
+   },
+   {
+    "from": "fix",
+    "result": "give-up",
+    "to": "abort"
+   },
+   {
+    "from": "design",
+    "implicit": true,
+    "result": "timeout",
+    "to": "abort"
+   },
+   {
+    "from": "implement",
+    "implicit": true,
+    "result": "timeout",
+    "to": "abort"
+   },
+   {
+    "from": "test",
+    "implicit": true,
+    "result": "timeout",
+    "to": "abort"
+   },
+   {
+    "from": "lint",
+    "implicit": true,
+    "result": "timeout",
+    "to": "abort"
+   },
+   {
+    "from": "valgrind",
+    "implicit": true,
+    "result": "timeout",
+    "to": "abort"
+   },
+   {
+    "from": "fix",
+    "implicit": true,
+    "result": "timeout",
+    "to": "abort"
+   },
+   {
+    "from": "design",
+    "implicit": true,
+    "result": "token-limit",
+    "to": "abort"
+   },
+   {
+    "from": "implement",
+    "implicit": true,
+    "result": "token-limit",
+    "to": "abort"
+   },
+   {
+    "from": "test",
+    "implicit": true,
+    "result": "token-limit",
+    "to": "abort"
+   },
+   {
+    "from": "lint",
+    "implicit": true,
+    "result": "token-limit",
+    "to": "abort"
+   },
+   {
+    "from": "valgrind",
+    "implicit": true,
+    "result": "token-limit",
+    "to": "abort"
+   },
+   {
+    "from": "fix",
+    "implicit": true,
+    "result": "token-limit",
+    "to": "abort"
+   }
+  ]
+ },
+ {
+  "entry_step": "design",
+  "name": "examples/gemini-browser/develop.cloche#develop",
+  "steps": [
+   {
+    "name": "design",
+    "type": "agent"
+   },
+   {
+    "name": "fix",
+    "type": "agent"
+   },
+   {
+    "name": "fmt",
+    "type": "script"
+   },
+   {
+    "name": "implement",
+    "type": "agent"
+   },
+   {
+    "name": "lint",
+    "type": "script"
+   },
+   {
+    "name": "test",
+    "type": "script"
+   }
+  ],
+  "wires": [
+   {
+    "from": "design",
+    "result": "success",
+    "to": "implement"
+   },
+   {
+    "from": "design",
+    "result": "fail",
+    "to": "abort"
+   },
+   {
+    "from": "implement",
+    "result": "success",
+    "to": "test"
+   },
+   {
+    "from": "implement",
+    "result": "fail",
+    "to": "abort"
+   },
+   {
+    "from": "test",
+    "result": "success",
+    "to": "lint"
+   },
+   {
+    "from": "test",
+    "result": "success",
+    "to": "fmt"
+   },
+   {
+    "from": "test",
+    "result": "fail",
+    "to": "fix"
+   },
+   {
+    "from": "lint",
+    "result": "fail",
+    "to": "fix"
+   },
+   {
+    "from": "fmt",
+    "result": "fail",
+    "to": "fix"
+   },
+   {
+    "from": "fix",
+    "result": "success",
+    "to": "test"
+   },
+   {
+    "from": "fix",
+    "result": "fail",
+    "to": "abort"
+   },
+   {
+    "from": "fix",
+    "result": "give-up",
+    "to": "abort"
+   },
+   {
+    "from": "implement",
+    "implicit": true,
+    "result": "timeout",
+    "to": "abort"
+   },
+   {
+    "from": "test",
+    "implicit": true,
+    "result": "timeout",
+    "to": "abort"
+   },
+   {
+    "from": "lint",
+    "implicit": true,
+    "result": "timeout",
+    "to": "abort"
+   },
+   {
+    "from": "fmt",
+    "implicit": true,
+    "result": "timeout",
+    "to": "abort"
+   },
+   {
+    "from": "fix",
+    "implicit": true,
+    "result": "timeout",
+    "to": "abort"
+   },
+   {
+    "from": "design",
+    "implicit": true,
+    "result": "timeout",
+    "to": "abort"
+   },
+   {
+    "from": "fmt",
+    "implicit": true,
+    "result": "token-limit",
+    "to": "abort"
+   },
+   {
+    "from": "fix",
+    "implicit": true,
+    "result": "token-limit",
+    "to": "abort"
+   },
+   {
+    "from": "design",
+    "implicit": true,
+    "result": "token-limit",
+    "to": "abort"
+   },
+   {
+    "from": "implement",
+    "implicit": true,
+    "result": "token-limit",
+    "to": "abort"
+   },
+   {
+    "from": "test",
+    "implicit": true,
+    "result": "token-limit",
+    "to": "abort"
+   },
+   {
+    "from": "lint",
+    "implicit": true,
+    "result": "token-limit",
+    "to": "abort"
+   }
+  ]
+ }
+]
