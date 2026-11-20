@@ -12,6 +12,30 @@
 - The missing-marker recovery turn now lists the step's declared results as the only valid names, and a recovery answer with an undeclared name (e.g. `done`) is treated as a missing marker (step takes `fail`) instead of aborting the run with `undeclared result`.
 - `ask_user` no longer returns a timeout to Claude agents after ~60s, before `park_after` can park the run: blocking `tools/call` requests on `/mcp` now reply as an SSE stream with 15s keepalives when the client accepts `text/event-stream`.
 
+## v3.35.8 — 2026-11-20
+
+### Features
+
+- Autonomous work needs a way to ask a human or a decision record a question and wait. `cloche questions ask|read` routes through a `qa` backend module, and a new `saga` module (ask, await-answer, read-answer, plus a `saga-judge` agent that settles questions an existing ruling already decides) provides one. A failed `qa` workflow now reports its failing step and output tail instead of "no answer yet". ([design](docs/plans/2026-11-13-qa-backends-design.md))
+- Binding every slot of a group one by one is tedious. `bind qa = <module>` and `bind tasks = <module>` route a whole slot group to a module, and `bind qa = saga { env.SAGA_PROJECT = "cloche" }` passes env settings; `cloche validate` checks them. `qa` and `tasks` are now reserved workflow names. ([design](docs/plans/2026-11-13-qa-backends-design.md))
+- Long-lived domain owners need a safe way to act on a project. Domain Responsible Agents (DRAs) are defined in `.cloche/dras/<name>/charter.md`, listed with `cloche dra list`, woken with `cloche dra wake|ruling|heartbeat`, and run in a locked-down `cloche-dra` container (read-only project, enforced network allowlist through an egress sidecar, per-wake-up API credential). A DRA can create, update, close and mark `ready` tasks in its own domain; build the image with `make docker-dra` (`cloche doctor` checks it). ([design](docs/plans/2026-11-10-autonomous-loop-design.md))
+- Tasks could only come from a tracker the user fed by hand. Signals can now create tasks: `cloche tasks create|update|find` and the `create-task`/`update-task` workflows in `beads-tasks` and `github-tasks`, signal intake guarded by a per-project token (`cloche signals token [--rotate]`), and built-in sources for repeated task failure and a red `main` (`cloche run check-main`). ([design](docs/plans/2026-11-10-autonomous-loop-design.md))
+- Urgent work had to wait for a free slot. `[orchestration] emergency` lets urgent tasks (priority 0 or an `urgent` label) launch above `concurrency`, and `emergency_overflow` controls whether they may pass the cap. ([design](docs/plans/2026-11-10-autonomous-loop-design.md))
+- Unattended runs could burn through the account's usage allowance. A daily `[budget]` cap now pauses launches and parks in-flight runs once reached; `cloche status` shows a `Budget:` line and "Needs you" a `budget` item. ([design](docs/plans/2026-11-10-autonomous-loop-design.md))
+- The `develop` workflow now has a `review` step before update-docs; failed reviews route back to `fix` with the findings.
+- The console DAG lays workflows out along the happy path with retry loops to the side, and highlights a step's outgoing edges on hover and click.
+- `beads-tasks` `list-tasks` now hands out only tasks labelled `ready`.
+
+### Notable fixes
+
+- Poll steps ran on the orchestration loop's tick rather than their `interval`. They now fire on their own timer at the configured interval; `cloche validate` warns on intervals under 1s.
+- `ask_user` returned a timeout to Claude agents after about 60s, before `park_after` could park the run. Blocking `/mcp` calls now reply as an SSE stream with 15s keepalives.
+- When an agent's marker was missing, the recovery turn could abort the run with `undeclared result`. It now lists the declared results, and an undeclared answer takes `fail`.
+- Locked containers now fail closed if any lock-down step fails, and a lock-down failure is told apart from the agent's own non-zero exit.
+- Streamed agent text (e.g. opencode deltas) could attach to a `CLOCHE_RESULT` marker and corrupt the result name; a line break is now inserted.
+- The agent image lacked `jq`, which module scripts need; it is now installed.
+- `claim-task` dropped the attempt KV before its outputs were read; it is now kept.
+
 ## v3.27.0 — 2026-11-09
 
 ### Features

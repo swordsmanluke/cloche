@@ -17,6 +17,134 @@
 - `50db20b` Added the BDD test plan and `features/group_binds` scenarios for group binds and bind settings.
 - `fc029023` Added `features/ask_user_park.feature` (steps pending) for the ask_user park-before-timeout fix.
 
+## v3.35.8 — 2026-11-20
+
+### Features
+
+- `2fe8c79` Docs: DRAs may mark tasks ready in their own domain.
+- `f865249` A DRA can mark tasks `ready` in its own domain on create and update; other domains, missing tasks and tasks without the DRA's label are refused with 403.
+- `e336e68` saga `read.sh` prints selected option labels plus text for an answer.
+- `b2cb122` saga `read-answer` prefers human answers over agent answers.
+- `bf799a8` Adds the saga `qa` backend module (ask / await-answer / read-answer) behind a stub saga.
+- `2904c36` Adds the questions contract and the `cloche questions` CLI (`ask`, poll, read) that routes through the project's bound `qa` module; `ask` fails naming the missing `bind qa = <module>` line.
+- `ce69f99` Docs for group binds (`bind qa/tasks = module`) and bind env settings.
+- `fab725e` Docs for group binds and bind settings (second revision).
+- `1dcc7f8` Group binds (`bind qa = <module>`) and bind `env.*` settings: parse, resolve and validate.
+- `ff415e6` DRA triggers: a DRA is told how its own tasks end; task results always wake the owner, while signals from `dra:<name>` don't wake the sender.
+- `15ac5e5` Locked DRA containers: the egress sidecar is stopped and removed when the run ends, even if the main container is kept.
+- `31b859d` Adds the `cloche-dra` image (with `saga` copied from the host; `make docker-dra`) and a `cloche doctor` check for it.
+- `c17f53a` Adds the `saga-judge` module's `ask`, `await-answer` and `judge` workflows parsing saga's `--json` output.
+- `ac20244` Adds `cloche dra ruling` and `cloche dra heartbeat`; the daemon queues events for a DRA and delivers them in one wake-up (heartbeat default interval 4h).
+- `c2c78b9` Adds `cloche dra wake <name> --message` and a richer `cloche dra list` (session id, last wake-up); wake-ups run in the DRA image and resume the DRA's Claude session.
+- `d3e1dd6` DRAs get a per-wake-up credential and a DRA API (`/api/dra/...`) to list tasks/runs, read run output, and create/update/close tasks; created tasks always carry the DRA's domain label.
+- `042dd8d` Locked-down DRA profile (`container { profile = "dra" }`): read-only project, own image, and an enforced network allowlist via an egress sidecar on a Docker `--internal` network.
+- `9938ea3` Adds `cloche dra list` and `.cloche/dras/<name>/charter.md`; `cloche validate` checks DRA names and charters.
+- `40085c2` Adds the `saga-judge` module with a judge agent that settles questions an existing ruling already decides.
+- `e6dfed8` Signals are stored for 30 days and `signal_source` is validated (1–128 chars of letters, digits, `.`, `_`, `-`; otherwise 400).
+- `4aa87c8` `beads-tasks` `list-tasks` hands out only tasks labelled `ready`; `create-task` accepts `signal_source`/`signal_key`.
+- `42d8d6a` Adds built-in signal sources: the daemon signals repeated task failure, and a `check-main` timer workflow runs the suite against `main` and posts an urgent `ci-main` signal on red.
+- `b5f4b88` Adds `[orchestration] emergency` and `emergency_overflow`: urgent tasks (priority 0 or `urgent` label) can launch above `concurrency`; list-tasks entries gain `priority` and `labels`.
+- `20bb9f3` Signal intake requires a per-project bearer token; `cloche signals token [--rotate]` shows or rotates it.
+- `5aca8d1` Adds `create-task` and `update-task` to the `beads-tasks`/`github-tasks` modules and the `cloche tasks create|update|find` CLI.
+- `6807d37` The `develop` workflow gains a `review` step (up to 90m) before update-docs; findings route back to `fix` through `review_findings_path`.
+- `a57e496` Adds a daily usage budget cap: launches pause and in-flight runs are parked when it is hit; `cloche status` shows a `Budget:` line and "Needs you" a `budget` item.
+
+### Fixes
+
+- `25d6eb0` When a `qa` slot's workflow fails, `cloche questions` now reports the failing step, its last 20 lines of output and the log path instead of hiding the error; the API 404 body carries `failed_step`, `output_tail` and `log_path`.
+- `fbb71cb` Phase-failure logging no longer swallows errors.
+- `9bfa447` Poll steps now fire at their configured `interval` on their own timer instead of the orchestration loop's tick rate; `cloche validate` warns on intervals under 1s.
+- `f6254b6` Adds the 1s poll-interval floor warning to the validator, with a fake-clock cadence test.
+- `23bab9b` The `saga_qa_backend` stale-reference scan now checks tracked files only (`git grep`).
+- `35e918c` Missing-marker recovery turn lists the step's declared results; an undeclared answer takes `fail` instead of aborting the run.
+- `b964b08` Docs for the recovery-turn behaviour (duplicate of 35e918c).
+- `616772a` `ask_user` over `/mcp` no longer times out at the client after ~60s: blocking calls reply as an SSE stream with 15s keepalives.
+- `70c68a1` Docs for the `ask_user` SSE keepalive fix; also refreshes USAGE/workflows examples.
+- `4675b17` Locked containers tell a lock-down failure from an agent exit by a dedicated exit code (97), so an agent's own non-zero exit is no longer reported as a lock-down failure.
+- `ad2ed4a` The DRA image build context now includes `docs/init`.
+- `55c82e9` Locked containers fail closed: if any root-side lock-down step fails, the agent is not started and the run fails with the lock-down error.
+- `19dbb27` Agent image now includes `jq`, which module scripts need.
+- `6cffa02` Agent output parsing no longer lets streamed text (e.g. opencode deltas) glue onto a `CLOCHE_RESULT` marker's result name.
+- `ae4503b` Review fixes for the autonomous-loop tickets: signal handler runs are capped (8 concurrent, 30/hour per project and source, else 429); adds `cloche tasks find`.
+- `048e4d4` Budget cap review fixes: usage read via `claude -p "/usage"`, fullest window used, unreadable usage never blocks launches and raises a `budget` item.
+- `aee2c8c` `claim-task` keeps the attempt KV until outputs are read.
+
+### UI/UX
+
+- `6e39973` Console DAG highlights a step's outgoing edges on hover and click.
+- `920da62` Console lays workflows out along the happy path, with retry loops drawn to the side.
+
+### Internal
+
+- `5d72a44` Self-review fix: handle swallowed unmarshal error, drop redundant check.
+- `dc09d53` Adds BDD test plan for DRAs may set ready in their own domain.
+- `266b15f` Self-review fix: make discarded Encode error explicit in test fake.
+- `e36510b` Adds BDD test plan for qa phase failures hiding the underlying error.
+- `83bb67a` Self-review fix: drop duplicate real-timer wrapper, fix stale comment.
+- `4426e8a` Adds BDD test plan for poll interval cadence.
+- `5429f20` Docs: saga read-answer includes selected option labels.
+- `55e57a7` Self-review fix: handle swallowed json.Marshal error in selection test helper.
+- `6384a14` Adds BDD test plan for saga read.sh selection answers.
+- `d509812` Self-review fix: handle swallowed writeQuestions error.
+- `2c24170` Self-review fix: drop dead field, handle swallowed read error.
+- `0addb6e` Adds BDD test plan for saga read.sh real answer shape.
+- `d33e54e` Self-review fix: extract duplicated git init/stage helper.
+- `b8210d1` Self-review fix: extract duplicated git init/stage helper.
+- `39a5f2b` Self-review fix: clean up scan scenario temp checkout.
+- `e9e9884` Adds BDD test plan for dra_no_saga CLOCHE_SAGA_ADDR scan.
+- `d00a6c8` Merge of main into a vertical branch.
+- `d3b37ba` Adds BDD test plan for removing Saga from the DRA image and locked-container allowlist.
+- `11828b2` Docs list the built-in generic `judge` workflow among built-in workflows.
+- `220c8a6` Adds BDD test plan for built-in generic judge.
+- `a3cf325` Corrects a stale stand-in note about DRA waits in USAGE docs.
+- `80198d4` Self-review fix: document intentionally ignored wait-store read error.
+- `83a46af` Adds BDD test plan for DRA waits.
+- `2b13325` Self-review fix: handle temp dir cleanup error in stale-scan hook.
+- `aaec46a` Self-review fix: handle temp dir cleanup error in stale-scan hook.
+- `5a3be6e` Adds BDD test plan for saga_qa_backend stale-reference scan.
+- `c9433f3` Self-review fix: surface grep errors in stale-reference step.
+- `f159096` Self-review fix: surface grep errors in stale-reference step.
+- `51ced6c` Adds BDD test plan for saga module qa backend.
+- `08109a4` Self-review fix: remove unused recoveryWorld fields.
+- `6f899e1` Self-review fix: remove unused recoveryWorld fields.
+- `5d0e5b4` Self-review fix: handle swallowed errors, simplify cancel tracking, dedupe secret.
+- `0a41b32` Adds the `vertical-bdd-test-plan` workflow run output (squash commit; test-plan scaffolding).
+- `e7500a5` Self-review fix: use slices.Contains instead of hand-rolled helper.
+- `aa247fb` Moves the recoveryPrompt test into the internal package so it compiles.
+- `e0ba0e4` Adds BDD test plan for missing-marker recovery turn declared results.
+- `d841189` Self-review fix: dedupe SSE writes, handle write/marshal errors.
+- `97975b2` Self-review fix: remove no-op fakeClock scaffolding from mcp test.
+- `fc02902` Adds BDD test plan for ask_user park-before-client-timeout bug.
+- `90b4377` Self-review fix: handle swallowed ReadFile error in bindEnvCall test helper.
+- `50db20b` Adds BDD test plan for group binds and bind settings.
+- `eb6a065` Adds the Q&A backends design doc (pluggable question stores, group binds, DRA waits).
+- `9470921` Intent scan state updated.
+- `bf36e65` Intent scan state updated.
+- `5f24920` Intent scan state updated.
+- `b0d227a` Intent scan state updated.
+- `68a9976` Intent scan state updated.
+- `80d176c` Removes the dashboard token auth added earlier in this range, so there is no net change since v3.27.0; docs now say the dashboard listener is unauthenticated and should be bound to loopback.
+- `a9993a6` Intent scan state updated.
+- `6e580ed` Intent scan state updated.
+- `b0fe66c` Intent scan state updated.
+- `bc87c57` Intent scan state updated.
+- `8e32919` Intent scan state updated.
+- `b4854a5` Intent scan state updated.
+- `cae6ee6` Adds dashboard token auth (removed again by 80d176c; no net effect).
+- `9064769` Intent scan state updated.
+- `026005f` Intent scan state updated.
+- `5f9f343` Intent scan state updated.
+- `7a0f8eb` Intent scan state updated.
+- `7cd2189` Intent scan state updated.
+- `45ebadf` Intent scan state updated.
+- `a8af60e` Intent scan state updated.
+- `3380b92` Intent scan state updated.
+- `729fdd8` Intent scan state updated.
+- `bcfb8b4` Adds a spike doc on reading the Claude usage allowance programmatically.
+- `927d779` Docs: autonomous loop design rulings.
+- `6a924cb` Docs: autonomous loop design review fixes and open questions.
+- `12cfc5b` Docs: autonomous loop design.
+
 ## v3.27.0 — 2026-11-09
 
 ### Features
